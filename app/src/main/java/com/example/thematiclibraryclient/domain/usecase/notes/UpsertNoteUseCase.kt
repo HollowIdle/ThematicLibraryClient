@@ -1,0 +1,8 @@
+package com.example.thematiclibraryclient.domain.usecase.notes
+
+import com.example.thematiclibraryclient.domain.repository.INotesRemoteRepository
+import jakarta.inject.Inject
+
+class UpsertNoteUseCase @Inject constructor(private val repo: INotesRemoteRepository) {
+    suspend operator fun invoke(quoteId: Int, content: String) = repo.upsertNote(quoteId, content)
+}

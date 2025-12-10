@@ -1,0 +1,31 @@
+package com.example.thematiclibraryclient.ui.navigation
+
+sealed class ScreenRoute(val route: String) {
+
+    data object Main : ScreenRoute("main_screen")
+    data object Register : ScreenRoute("register_screen")
+    data object Login : ScreenRoute("login_screen")
+    data object Library : ScreenRoute("library_screen")
+    data object Quotes : ScreenRoute("quotes_screen")
+
+    data object Reader : ScreenRoute("reader_screen/{bookId}?position={position}") {
+        fun createRoute(bookId: Int): String = "reader_screen/$bookId"
+
+        fun createRouteWithPosition(bookId: Int, position: Int): String =
+            "reader_screen/$bookId?position=$position"
+    }
+
+    data object Profile : ScreenRoute("profile_screen")
+
+    data object ShelfManagement : ScreenRoute("shelf_management_screen")
+
+    data object BookDetails : ScreenRoute("book_details_screen/{bookId}") {
+        fun createRoute(bookId: Int): String = "book_details_screen/$bookId"
+    }
+
+    companion object{
+        const val AUTH_GRAPH_ROUTE = "auth_graph"
+        const val MAIN_GRAPH_ROUTE = "main_graph"
+    }
+
+}

@@ -4,7 +4,6 @@ import com.example.thematiclibraryclient.data.remote.model.grouped.ShelfGroupApi
 import com.example.thematiclibraryclient.data.remote.model.quotes.CreateQuoteRequestApiModel
 import com.example.thematiclibraryclient.data.remote.model.quotes.QuoteApiModel
 import com.example.thematiclibraryclient.data.remote.model.quotes.QuoteFlatApiModel
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET

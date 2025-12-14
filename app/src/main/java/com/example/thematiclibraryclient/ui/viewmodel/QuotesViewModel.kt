@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteFlatDomainModel
+import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
 import com.example.thematiclibraryclient.domain.usecase.notes.UpsertNoteUseCase
 import com.example.thematiclibraryclient.domain.usecase.quotes.DeleteQuoteUseCase
@@ -24,8 +24,8 @@ data class QuotesUiState(
     val groupedQuotes: List<ShelfGroupDomainModel> = emptyList(),
     val error: String? = null,
     val currentViewMode: QuotesViewMode = QuotesViewMode.GROUPED,
-    val flatQuotes: List<QuoteFlatDomainModel> = emptyList(),
-    val selectedQuote: QuoteFlatDomainModel? = null
+    val flatQuotes: List<QuoteDomainModel> = emptyList(),
+    val selectedQuote: QuoteDomainModel? = null
 )
 
 @HiltViewModel
@@ -89,8 +89,7 @@ class QuotesViewModel @Inject constructor(
         }
     }
 
-    fun deleteSelectedQuote() {
-        val quoteToDelete = _uiState.value.selectedQuote ?: return
+    fun deleteQuote(quoteToDelete: QuoteDomainModel) {
         viewModelScope.launch {
             when (val result = deleteQuoteUseCase(quoteToDelete.id)) {
                 is TResult.Success -> {
@@ -126,7 +125,7 @@ class QuotesViewModel @Inject constructor(
         }
     }
 
-    fun onQuoteSelected(quote: QuoteFlatDomainModel) {
+    fun onQuoteSelected(quote: QuoteDomainModel) {
         _uiState.value = _uiState.value.copy(selectedQuote = quote)
     }
 

@@ -1,6 +1,6 @@
 package com.example.thematiclibraryclient.data.remote.model.quotes
 
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteFlatDomainModel
+import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.google.gson.annotations.SerializedName
 
 data class QuoteFlatApiModel(
@@ -25,15 +25,12 @@ data class BookInQuoteApiModel(
     val title: String
 )
 
-data class NoteInQuoteApiModel(
-    val content: String?
-)
-
-fun QuoteFlatApiModel.toDomainModel() = QuoteFlatDomainModel(
+fun QuoteFlatApiModel.toDomainModel() = QuoteDomainModel(
     id = this.id,
     selectedText = this.selectedText,
     positionStart = this.positionStart,
+    positionEnd = this.positionEnd,
     bookId = this.book.id,
     bookTitle = this.book.title,
-    noteContent = noteContent
+    noteContent = this.noteContent
 )

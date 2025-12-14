@@ -10,12 +10,16 @@ import com.example.thematiclibraryclient.domain.usecase.quotes.CreateQuoteUseCas
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.DeleteBookmarkUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.GetBookContentUseCase
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.GetBookmarksUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.GetBookDetailsUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookProgressUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -35,7 +39,9 @@ class ReaderViewModel @Inject constructor(
     private val createQuoteUseCase: CreateQuoteUseCase,
     private val createBookmarkUseCase: CreateBookmarkUseCase,
     private val getBookmarksUseCase: GetBookmarksUseCase,
-    private val deleteBookmarkUseCase: DeleteBookmarkUseCase
+    private val deleteBookmarkUseCase: DeleteBookmarkUseCase,
+    private val getBookDetailsUseCase: GetBookDetailsUseCase,
+    private val updateBookProgressUseCase: UpdateBookProgressUseCase
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState = _uiState.asStateFlow()
@@ -43,15 +49,15 @@ class ReaderViewModel @Inject constructor(
     private val _eventFlow = MutableSharedFlow<UiEvent>()
     val eventFlow = _eventFlow.asSharedFlow()
 
+    private var initialGlobalPosition: Int = 0
+
     fun loadBook(bookId: Int) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
 
-            val bookmarksResult = getBookmarksUseCase(bookId)
-            val bookmarks = if (bookmarksResult is TResult.Success) {
-                bookmarksResult.data.map { it.position }.toSet()
-            } else {
-                emptySet()
+            val detailsResult = getBookDetailsUseCase(bookId)
+            if (detailsResult is TResult.Success) {
+                initialGlobalPosition = detailsResult.data.lastPosition
             }
 
             when (val result = getBookContentUseCase(bookId)) {
@@ -105,24 +111,42 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onPagesCalculated(pages: List<String>) {
-        _uiState.value = _uiState.value.copy(pages = pages)
+        var targetPage = 0
+        if (initialGlobalPosition > 0 && pages.isNotEmpty()) {
+            var charCount = 0
+            for ((index, page) in pages.withIndex()) {
+                if (initialGlobalPosition < charCount + page.length) {
+                    targetPage = index
+                    break
+                }
+                charCount += page.length
+            }
+        }
+
+        _uiState.value = _uiState.value.copy(
+            pages = pages,
+            currentPage = targetPage
+        )
     }
 
     fun onPageChanged(page: Int) {
         _uiState.value = _uiState.value.copy(currentPage = page)
     }
 
-    fun createQuote(bookId: Int, text: String, positionStart: Int, positionEnd: Int, note: String?) {
+    fun saveProgress(bookId: Int) {
         val currentState = _uiState.value
+        if (currentState.pages.isEmpty()) return
+
         val currentPageIndex = currentState.currentPage
-        val offset = currentState.pages.take(currentPageIndex).sumOf { it.length }
-        val globalStart = offset + positionStart
-        val globalEnd = offset + positionEnd
+        val currentGlobalOffset = currentState.pages.take(currentPageIndex).sumOf { it.length }
 
         viewModelScope.launch {
-            when (createQuoteUseCase(bookId, text, globalStart, globalEnd, note)) {
-                is TResult.Success -> _eventFlow.emit(UiEvent.ShowSnackbar("Цитата успешно создана!"))
-                is TResult.Error -> _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при создании цитаты"))
+            withContext(NonCancellable){
+                try {
+                    updateBookProgressUseCase(bookId, currentGlobalOffset)
+                } catch (e:Exception){
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -137,6 +161,21 @@ class ReaderViewModel @Inject constructor(
             deleteBookmark(existingBookmark)
         } else {
             createBookmark(bookId, currentPage)
+        }
+    }
+
+    fun createQuote(bookId: Int, text: String, positionStart: Int, positionEnd: Int, note: String?) {
+        val currentState = _uiState.value
+        val currentPageIndex = currentState.currentPage
+        val offset = currentState.pages.take(currentPageIndex).sumOf { it.length }
+        val globalStart = offset + positionStart
+        val globalEnd = offset + positionEnd
+
+        viewModelScope.launch {
+            when (createQuoteUseCase(bookId, text, globalStart, globalEnd, note)) {
+                is TResult.Success -> _eventFlow.emit(UiEvent.ShowSnackbar("Цитата успешно создана!"))
+                is TResult.Error -> _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при создании цитаты"))
+            }
         }
     }
 

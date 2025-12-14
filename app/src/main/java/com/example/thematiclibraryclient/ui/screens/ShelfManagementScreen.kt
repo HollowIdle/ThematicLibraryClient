@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
+import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
 import com.example.thematiclibraryclient.ui.viewmodel.ShelfManagementViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -20,6 +21,8 @@ fun ShelfManagementScreen(
     viewModel: ShelfManagementViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    var shelfToDelete by remember { mutableStateOf<ShelfDomainModel?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -43,7 +46,9 @@ fun ShelfManagementScreen(
                         ShelfItem(
                             shelf = shelf,
                             onUpdate = { newName -> viewModel.updateShelf(shelf.id, newName) },
-                            onDelete = { viewModel.deleteShelf(shelf.id) }
+                            onDelete = {
+                                shelfToDelete = shelf
+                            }
                         )
                     }
                 }
@@ -58,6 +63,18 @@ fun ShelfManagementScreen(
                 viewModel.createShelf(name)
                 showCreateDialog = false
             }
+        )
+    }
+
+    if (shelfToDelete != null) {
+        ConfirmationDialog(
+            title = "Удаление полки",
+            text = "Вы уверены, что хотите удалить полку \"${shelfToDelete?.name}\"? Книги с этой полки не будут удалены.",
+            onConfirm = {
+                viewModel.deleteShelf(shelfToDelete!!.id)
+                shelfToDelete = null
+            },
+            onDismiss = { shelfToDelete = null }
         )
     }
 }

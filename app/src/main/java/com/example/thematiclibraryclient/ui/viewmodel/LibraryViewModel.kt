@@ -1,18 +1,20 @@
 package com.example.thematiclibraryclient.ui.viewmodel
 
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.books.BookDomainModel
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
+import com.example.thematiclibraryclient.domain.repository.IBooksRemoteRepository
 import com.example.thematiclibraryclient.domain.usecase.books.GetBooksUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.ObserveBooksUpdatesUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.UploadBookUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 
 data class LibraryUiState(
@@ -25,7 +27,9 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val getBooksUseCase: GetBooksUseCase,
-    private val uploadBookUseCase: UploadBookUseCase
+    private val uploadBookUseCase: UploadBookUseCase,
+    private val observeBooksUpdatesUseCase: ObserveBooksUpdatesUseCase,
+    private val booksRepository: IBooksRemoteRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LibraryUiState())
@@ -33,6 +37,7 @@ class LibraryViewModel @Inject constructor(
 
     init {
         loadBooks()
+        observeUpdates()
     }
 
     fun loadBooks() {
@@ -51,6 +56,14 @@ class LibraryViewModel @Inject constructor(
                     }
                     _uiState.value = LibraryUiState(error = errorMessage)
                 }
+            }
+        }
+    }
+
+    private fun observeUpdates() {
+        viewModelScope.launch {
+            observeBooksUpdatesUseCase().collect{
+                loadBooks()
             }
         }
     }

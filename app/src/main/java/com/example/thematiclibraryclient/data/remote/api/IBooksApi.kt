@@ -2,11 +2,17 @@ package com.example.thematiclibraryclient.data.remote.api
 
 import com.example.thematiclibraryclient.data.remote.model.books.BookDetailsApiModel
 import com.example.thematiclibraryclient.data.remote.model.books.BookListItemApiModel
+import com.example.thematiclibraryclient.data.remote.model.books.BookProgressRequestApiModel
+import com.example.thematiclibraryclient.data.remote.model.books.UpdateDescriptionRequestApiModel
+import com.example.thematiclibraryclient.data.remote.model.common.StringListRequestApiModel
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
+import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 
@@ -26,5 +32,32 @@ interface IBooksApi {
     suspend fun uploadBook(
         @Part file: MultipartBody.Part
     ): BookListItemApiModel
+
+    @POST("/api/books/{bookId}/description")
+    suspend fun updateDescription(
+        @Path("bookId") bookId: Int,
+        @Body request: UpdateDescriptionRequestApiModel
+    )
+
+    @POST("/api/books/{bookId}/authors")
+    suspend fun updateAuthors(
+        @Path("bookId") bookId: Int,
+        @Body request: StringListRequestApiModel
+    )
+
+    @POST("/api/books/{bookId}/tags")
+    suspend fun updateTags(
+        @Path("bookId") bookId: Int,
+        @Body request: StringListRequestApiModel
+    )
+
+    @POST("/api/books/{bookId}/progress")
+    suspend fun updateProgress(
+        @Path("bookId") bookId: Int,
+        @Body request: BookProgressRequestApiModel
+    )
+
+    @DELETE("/api/books/{id}")
+    suspend fun deleteBook(@Path("id") bookId: Int)
 
 }

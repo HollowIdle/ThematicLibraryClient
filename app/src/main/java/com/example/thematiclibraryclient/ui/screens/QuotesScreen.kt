@@ -40,10 +40,12 @@ import androidx.navigation.NavHostController
 import com.example.thematiclibraryclient.domain.model.books.BookmarkDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.BookGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteFlatDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
+import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
 import com.example.thematiclibraryclient.ui.common.ErrorComponent
+import com.example.thematiclibraryclient.ui.common.FlatQuotesList
+import com.example.thematiclibraryclient.ui.common.QuoteActionsDialog
 import com.example.thematiclibraryclient.ui.navigation.ScreenRoute
 import com.example.thematiclibraryclient.ui.viewmodel.QuotesViewMode
 import com.example.thematiclibraryclient.ui.viewmodel.QuotesViewModel
@@ -54,6 +56,7 @@ fun QuotesScreen(
     viewModel: QuotesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var quoteToDelete by remember { mutableStateOf<QuoteDomainModel?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         QuoteModeTabs(
@@ -62,30 +65,33 @@ fun QuotesScreen(
         )
 
         Box(
-            modifier = Modifier.weight(1f)
+            modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
         ) {
             when {
                 uiState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center)
-                        )
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 uiState.error != null -> {
                     ErrorComponent(
                         errorMessage = uiState.error!!,
-                        onRetry = {viewModel.loadQuotes()}
+                        onRetry = { viewModel.loadQuotes() }
                     )
                 }
                 uiState.currentViewMode == QuotesViewMode.GROUPED -> {
-                    GroupedQuotesList(shelves = uiState.groupedQuotes)
+                    GroupedQuotesList(
+                        shelves = uiState.groupedQuotes,
+                        onQuoteClick = { quote ->
+                            viewModel.onQuoteSelected(quote)
+                        }
+                    )
                 }
                 uiState.currentViewMode == QuotesViewMode.FLAT -> {
                     FlatQuotesList(
                         quotes = uiState.flatQuotes,
-                        onQuoteClick = { quote ->
-                            viewModel.onQuoteSelected(quote)
-                        }
+                        onQuoteClick = { quote -> viewModel.onQuoteSelected(quote) },
+                        emptyMessage = "У вас пока нет ни одной цитаты."
                     )
                 }
             }
@@ -96,7 +102,10 @@ fun QuotesScreen(
         QuoteActionsDialog(
             quote = uiState.selectedQuote!!,
             onDismiss = { viewModel.onDialogDismiss() },
-            onDelete = { viewModel.deleteSelectedQuote() },
+            onDelete = {
+                quoteToDelete = uiState.selectedQuote
+                viewModel.onDialogDismiss()
+            },
             onSaveNote = { note -> viewModel.saveNoteForSelectedQuote(note) },
             onGoToSource = { quote ->
                 navController.navigate(
@@ -107,68 +116,17 @@ fun QuotesScreen(
         )
     }
 
-}
-
-@Composable
-fun QuoteActionsDialog(
-    quote: QuoteFlatDomainModel,
-    onDismiss: () -> Unit,
-    onDelete: () -> Unit,
-    onSaveNote: (String) -> Unit,
-    onGoToSource: (QuoteFlatDomainModel) -> Unit
-) {
-    var noteText by remember { mutableStateOf(quote.noteContent ?: "") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Управление цитатой") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    text = "“${quote.selectedText}”",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                OutlinedTextField(
-                    value = noteText,
-                    onValueChange = { noteText = it },
-                    label = { Text("Заметка к цитате") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Отмена")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = { onSaveNote(noteText) }) {
-                        Text("Сохранить")
-                    }
-                }
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = onDelete,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Удалить")
-                    }
-                    TextButton(onClick = { onGoToSource(quote) }) {
-                        Text("Перейти к источнику")
-                    }
-                }
-            }
-        }
-    )
+    if (quoteToDelete != null) {
+        ConfirmationDialog(
+            title = "Удаление цитаты",
+            text = "Вы уверены, что хотите удалить эту цитату?",
+            onConfirm = {
+                viewModel.deleteQuote(quoteToDelete!!)
+                quoteToDelete = null
+            },
+            onDismiss = { quoteToDelete = null }
+        )
+    }
 }
 
 @Composable
@@ -194,52 +152,10 @@ private fun QuoteModeTabs(
 }
 
 @Composable
-private fun FlatQuotesList(
-    quotes: List<QuoteFlatDomainModel>,
-    onQuoteClick: (QuoteFlatDomainModel) -> Unit
-) {
-    if (quotes.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("У вас пока нет ни одной цитаты.")
-        }
-        return
-    }
-
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items(quotes.size) { index ->
-            val quote = quotes[index]
-            FlatQuoteItem(quote = quote, onClick = { onQuoteClick(quote)})
-        }
-    }
-}
-
-@Composable
-private fun FlatQuoteItem(
-    quote: QuoteFlatDomainModel,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = { onClick() }
+private fun GroupedQuotesList(
+    shelves: List<ShelfGroupDomainModel>,
+    onQuoteClick: (QuoteDomainModel) -> Unit
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(
-                text = "“${quote.selectedText}”",
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = quote.bookTitle,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.align(Alignment.End)
-            )
-        }
-    }
-}
-
-@Composable
-private fun GroupedQuotesList(shelves: List<ShelfGroupDomainModel>) {
     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
         shelves.forEach { shelf ->
             item {
@@ -247,7 +163,10 @@ private fun GroupedQuotesList(shelves: List<ShelfGroupDomainModel>) {
             }
             shelf.books.forEach { book ->
                 item {
-                    BookItemWithQuotes(book = book)
+                    BookItemWithQuotes(
+                        book = book,
+                        onQuoteClick = onQuoteClick
+                        )
                 }
             }
         }
@@ -267,7 +186,10 @@ private fun ShelfHeader(name: String) {
 }
 
 @Composable
-private fun BookItemWithQuotes(book: BookGroupDomainModel) {
+private fun BookItemWithQuotes(
+    book: BookGroupDomainModel,
+    onQuoteClick: (QuoteDomainModel) -> Unit
+) {
     Column(modifier = Modifier.padding(start = 24.dp, end = 16.dp, bottom = 16.dp)) {
         Text(
             text = book.bookTitle,
@@ -276,17 +198,35 @@ private fun BookItemWithQuotes(book: BookGroupDomainModel) {
         )
         Spacer(Modifier.height(8.dp))
         book.quotes.forEach { quote ->
-            QuoteItem(quote = quote)
+            QuoteItem(
+                quote = quote,
+                onClick = {
+                    val domainModel = QuoteDomainModel(
+                        id = quote.id,
+                        selectedText = quote.selectedText,
+                        positionStart = quote.positionStart,
+                        positionEnd = quote.positionEnd,
+                        noteContent = quote.noteContent,
+                        bookId = book.bookId,
+                        bookTitle = book.bookTitle
+                    )
+                    onQuoteClick(domainModel)
+                }
+                )
             Spacer(Modifier.height(4.dp))
         }
     }
 }
 
 @Composable
-private fun QuoteItem(quote: QuoteGroupDomainModel) {
+private fun QuoteItem(
+    quote: QuoteGroupDomainModel,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        onClick = { onClick() }
     ) {
         Text(
             text = "“${quote.selectedText}”",

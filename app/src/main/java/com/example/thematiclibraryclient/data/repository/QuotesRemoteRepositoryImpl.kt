@@ -4,12 +4,10 @@ import com.example.thematiclibraryclient.data.mapper.toConnectionExceptionDomain
 import com.example.thematiclibraryclient.data.remote.api.IQuotesApi
 import com.example.thematiclibraryclient.data.remote.model.grouped.toDomainModel
 import com.example.thematiclibraryclient.data.remote.model.quotes.CreateQuoteRequestApiModel
-import com.example.thematiclibraryclient.data.remote.model.quotes.QuoteApiModel
 import com.example.thematiclibraryclient.data.remote.model.quotes.toDomainModel
 import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteFlatDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
 import com.example.thematiclibraryclient.domain.repository.IQuotesRemoteRepository
 import jakarta.inject.Inject
@@ -27,7 +25,7 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getFlatQuotes(): TResult<List<QuoteFlatDomainModel>, ConnectionExceptionDomainModel> {
+    override suspend fun getFlatQuotes(): TResult<List<QuoteDomainModel>, ConnectionExceptionDomainModel> {
         return try {
             val flatQuotes = quotesApi.getFlatQuotes()
             TResult.Success(flatQuotes.map { it.toDomainModel() })
@@ -51,7 +49,7 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
                 note = note
             )
             val createdQuoteApiModel = quotesApi.createQuote(bookId, request)
-            TResult.Success(createdQuoteApiModel.toDomainModel())
+            TResult.Success(createdQuoteApiModel.toDomainModel(bookId))
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())
         }
@@ -69,7 +67,7 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
     override suspend fun getQuotesForBook(bookId: Int): TResult<List<QuoteDomainModel>, ConnectionExceptionDomainModel> {
         return try {
             val quotesForBook = quotesApi.getQuotesForBook(bookId)
-            TResult.Success(quotesForBook.map { it.toDomainModel() })
+            TResult.Success(quotesForBook.map { it.toDomainModel(bookId) })
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())
         }

@@ -10,8 +10,14 @@ import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.GetBookmarksUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.AddBookToShelfUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.DeleteBookUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.GetBookDetailsUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.RemoveBookFromShelfUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookAuthorsUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookTagsUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookDescriptionUseCase
+import com.example.thematiclibraryclient.domain.usecase.notes.UpsertNoteUseCase
+import com.example.thematiclibraryclient.domain.usecase.quotes.DeleteQuoteUseCase
 import com.example.thematiclibraryclient.domain.usecase.quotes.GetQuotesForBookUseCase
 import com.example.thematiclibraryclient.domain.usecase.shelves.GetShelvesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +32,7 @@ data class BookDetailsUiState(
     val allShelves: List<ShelfDomainModel> = emptyList(),
     val quotes: List<QuoteDomainModel> = emptyList(),
     val bookmarks: List<BookmarkDomainModel> = emptyList(),
+    val selectedQuote: QuoteDomainModel? = null,
     val error: String? = null
 )
 
@@ -37,6 +44,12 @@ class BookDetailsViewModel @Inject constructor(
     private val removeBookFromShelfUseCase: RemoveBookFromShelfUseCase,
     private val getQuotesForBookUseCase: GetQuotesForBookUseCase,
     private val getBookmarksUseCase: GetBookmarksUseCase,
+    private val updateBookAuthorsUseCase: UpdateBookAuthorsUseCase,
+    private val updateBookTagsUseCase: UpdateBookTagsUseCase,
+    private val updateBookDescriptionUseCase: UpdateBookDescriptionUseCase,
+    private val deleteBookUseCase: DeleteBookUseCase,
+    private val deleteQuoteUseCase: DeleteQuoteUseCase,
+    private val upsertNoteUseCase: UpsertNoteUseCase,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -44,6 +57,9 @@ class BookDetailsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(BookDetailsUiState())
     val uiState = _uiState.asStateFlow()
+
+    private val _eventFlow = MutableSharedFlow<BookDetailsViewModel.UiEvent>()
+    val eventFlow = _eventFlow.asSharedFlow()
 
     init {
         loadInitialData()
@@ -90,6 +106,60 @@ class BookDetailsViewModel @Inject constructor(
         }
     }
 
+    fun updateAuthors(authors: List<String>) {
+        viewModelScope.launch {
+            when (updateBookAuthorsUseCase(bookId, authors)) {
+                is TResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        bookDetails = _uiState.value.bookDetails?.copy(authors = authors)
+                    )
+                }
+                is TResult.Error -> { _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении списка авторов")) }
+            }
+        }
+    }
+
+    fun updateTags(tags: List<String>) {
+        viewModelScope.launch {
+            when (updateBookTagsUseCase(bookId, tags)) {
+                is TResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        bookDetails = _uiState.value.bookDetails?.copy(tags = tags)
+                    )
+                }
+                is TResult.Error -> { _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении списка тегов")) }
+            }
+        }
+    }
+
+    fun updateDescription(description: String) {
+        viewModelScope.launch {
+            when (updateBookDescriptionUseCase(bookId, description)) {
+                is TResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        bookDetails = _uiState.value.bookDetails?.copy(description = description)
+                    )
+                }
+                is TResult.Error -> {
+                    _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении описания книги"))
+                }
+            }
+        }
+    }
+
+    fun deleteBook() {
+        viewModelScope.launch {
+            when (deleteBookUseCase(bookId)) {
+                is TResult.Success -> {
+                    _eventFlow.emit(UiEvent.NavigateBack)
+                }
+                is TResult.Error -> {
+                    _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при удалении книги"))
+                }
+            }
+        }
+    }
+
     fun onShelfMembershipChanged(shelfId: Int, belongsToShelf: Boolean) {
         viewModelScope.launch {
             val result = if (belongsToShelf) {
@@ -109,8 +179,48 @@ class BookDetailsViewModel @Inject constructor(
                     bookDetails = _uiState.value.bookDetails?.copy(shelfIds = updatedShelfIds)
                 )
             } else {
-                // TODO: Показать ошибку (например, через eventFlow и Snackbar)
+                _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при изменения нахождения книги на полке"))
             }
         }
+    }
+
+    fun onQuoteSelected(quote: QuoteDomainModel) {
+        _uiState.value = _uiState.value.copy(selectedQuote = quote)
+    }
+
+    fun onDialogDismiss() {
+        _uiState.value = _uiState.value.copy(selectedQuote = null)
+    }
+
+    fun deleteQuote(quoteToDelete: QuoteDomainModel) {
+        viewModelScope.launch {
+            when (deleteQuoteUseCase(quoteToDelete.id)) {
+                is TResult.Success -> {
+                    val updatedList = _uiState.value.quotes.filterNot { it.id == quoteToDelete.id }
+                    _uiState.value = _uiState.value.copy(quotes = updatedList, selectedQuote = null)
+                }
+                is TResult.Error -> {  }
+            }
+        }
+    }
+
+    fun saveNoteForSelectedQuote(noteContent: String) {
+        val quoteToUpdate = _uiState.value.selectedQuote ?: return
+        viewModelScope.launch {
+            when (upsertNoteUseCase(quoteToUpdate.id, noteContent)) {
+                is TResult.Success -> {
+                    val updatedList = _uiState.value.quotes.map {
+                        if (it.id == quoteToUpdate.id) it.copy(noteContent = noteContent) else it
+                    }
+                    _uiState.value = _uiState.value.copy(quotes = updatedList, selectedQuote = null)
+                }
+                is TResult.Error -> {  }
+            }
+        }
+    }
+
+    sealed class UiEvent {
+        object NavigateBack : UiEvent()
+        data class ShowSnackbar(val message: String) : UiEvent()
     }
 }

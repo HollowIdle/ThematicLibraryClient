@@ -22,11 +22,18 @@ import com.example.thematiclibraryclient.domain.model.books.BookDetailsDomainMod
 import com.example.thematiclibraryclient.domain.model.books.BookmarkDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
+import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
 import com.example.thematiclibraryclient.ui.common.ErrorComponent
+import com.example.thematiclibraryclient.ui.common.FlatQuotesList
+import com.example.thematiclibraryclient.ui.common.QuoteActionsDialog
 import com.example.thematiclibraryclient.ui.navigation.ScreenRoute
 import com.example.thematiclibraryclient.ui.viewmodel.BookDetailsViewModel
 import com.google.accompanist.flowlayout.FlowRow
 import kotlinx.coroutines.launch
+
+private enum class EditDialogType {
+    NONE, AUTHORS, TAGS, DESCRIPTION
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -36,12 +43,34 @@ fun BookDetailsScreen(
     viewModel: BookDetailsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var activeDialog by remember { mutableStateOf(EditDialogType.NONE) }
+    var quoteToDelete by remember { mutableStateOf<QuoteDomainModel?>(null) }
+
+    LaunchedEffect(key1 = true) {
+        viewModel.eventFlow.collect { event ->
+            when (event) {
+                is BookDetailsViewModel.UiEvent.NavigateBack -> {
+                    navController.popBackStack()
+                }
+                is BookDetailsViewModel.UiEvent.ShowSnackbar -> {}
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(uiState.bookDetails?.title ?: "Детали книги", maxLines = 1) },
-                // TODO: Добавить кнопку "Редактировать"
+                actions = {
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Удалить книгу",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             )
         },
         floatingActionButton = {
@@ -81,7 +110,12 @@ fun BookDetailsScreen(
                         )
                     ) {
                         item {
-                            BookDetailsContent(details = uiState.bookDetails!!)
+                            BookDetailsContent(
+                                details = uiState.bookDetails!!,
+                                onEditAuthors = { activeDialog = EditDialogType.AUTHORS },
+                                onEditTags = { activeDialog = EditDialogType.TAGS },
+                                onEditDescription = { activeDialog = EditDialogType.DESCRIPTION }
+                            )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 
@@ -94,14 +128,95 @@ fun BookDetailsScreen(
                                     bookmarks = uiState.bookmarks,
                                     onShelfMembershipChanged = { shelfId, belongs ->
                                         viewModel.onShelfMembershipChanged(shelfId, belongs)
+                                    },
+                                    onQuoteClick = { quote ->
+                                        viewModel.onQuoteSelected(quote)
                                     }
                                 )
                             }
                         }
                     }
+                    when (activeDialog) {
+                        EditDialogType.AUTHORS -> {
+                            EditListDialog(
+                                title = "Редактировать авторов",
+                                initialValue = uiState.bookDetails?.authors?.joinToString(", ") ?: "",
+                                onDismiss = { activeDialog = EditDialogType.NONE },
+                                onConfirm = { text ->
+                                    val authors = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                    viewModel.updateAuthors(authors)
+                                    activeDialog = EditDialogType.NONE
+                                }
+                            )
+                        }
+                        EditDialogType.TAGS -> {
+                            EditListDialog(
+                                title = "Редактировать теги",
+                                initialValue = uiState.bookDetails?.tags?.joinToString(", ") ?: "",
+                                onDismiss = { activeDialog = EditDialogType.NONE },
+                                onConfirm = { text ->
+                                    val tags = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                                    viewModel.updateTags(tags)
+                                    activeDialog = EditDialogType.NONE
+                                }
+                            )
+                        }
+                        EditDialogType.DESCRIPTION -> {
+                            EditDescriptionDialog(
+                                initialValue = uiState.bookDetails?.description ?: "",
+                                onDismiss = { activeDialog = EditDialogType.NONE },
+                                onConfirm = { text ->
+                                    viewModel.updateDescription(text)
+                                    activeDialog = EditDialogType.NONE
+                                }
+                            )
+                        }
+                        EditDialogType.NONE -> {}
+                    }
                 }
             }
         }
+    }
+    if (showDeleteDialog) {
+        ConfirmationDialog(
+            title = "Удаление книги",
+            text = "Вы уверены, что хотите удалить эту книгу? Все цитаты и закладки также будут удалены.",
+            onConfirm = {
+                viewModel.deleteBook()
+                showDeleteDialog = false
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    if (uiState.selectedQuote != null) {
+        QuoteActionsDialog(
+            quote = uiState.selectedQuote!!,
+            onDismiss = { viewModel.onDialogDismiss() },
+            onDelete = {
+                quoteToDelete = uiState.selectedQuote
+                viewModel.onDialogDismiss()
+            },
+            onSaveNote = { note -> viewModel.saveNoteForSelectedQuote(note) },
+            onGoToSource = { quote ->
+                navController.navigate(
+                    ScreenRoute.Reader.createRouteWithPosition(quote.bookId, quote.positionStart)
+                )
+                viewModel.onDialogDismiss()
+            }
+        )
+    }
+
+    if (quoteToDelete != null) {
+        ConfirmationDialog(
+            title = "Удаление цитаты",
+            text = "Вы уверены, что хотите удалить эту цитату?",
+            onConfirm = {
+                viewModel.deleteQuote(quoteToDelete!!)
+                quoteToDelete = null
+            },
+            onDismiss = { quoteToDelete = null }
+        )
     }
 }
 
@@ -110,9 +225,10 @@ fun BookDetailsScreen(
 private fun BookDetailsTabs(
     allShelves: List<ShelfDomainModel>,
     bookDetails: BookDetailsDomainModel,
-    onShelfMembershipChanged: (Int, Boolean) -> Unit,
     quotes: List<QuoteDomainModel>,
-    bookmarks: List<BookmarkDomainModel>
+    bookmarks: List<BookmarkDomainModel>,
+    onShelfMembershipChanged: (Int, Boolean) -> Unit,
+    onQuoteClick: (QuoteDomainModel) -> Unit
 ) {
     val tabs = listOf("Полки", "Цитаты", "Закладки")
     val pagerState = rememberPagerState(pageCount = { tabs.size })
@@ -143,7 +259,7 @@ private fun BookDetailsTabs(
                     bookShelfIds = bookDetails.shelfIds.toSet(),
                     onCheckedChange = onShelfMembershipChanged
                 )
-                1 -> QuotesContent(quotes = quotes)
+                1 -> QuotesContent(quotes = quotes, onQuoteClick = onQuoteClick)
                 2 -> BookmarksContent(bookmarks = bookmarks)
             }
         }
@@ -181,27 +297,15 @@ private fun ShelvesContent(
 }
 
 @Composable
-private fun QuotesContent(quotes: List<QuoteDomainModel>) {
-    if (quotes.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-            Text("Для этой книги еще нет цитат.")
-        }
-        return
-    }
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(quotes.size) { index ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "“${quotes[index].selectedText}”",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-        }
-    }
+private fun QuotesContent(
+    quotes: List<QuoteDomainModel>,
+    onQuoteClick: (QuoteDomainModel) -> Unit
+) {
+    FlatQuotesList(
+        quotes = quotes,
+        onQuoteClick = onQuoteClick,
+        emptyMessage = "Для этой книги еще нет цитат."
+    )
 }
 
 @Composable
@@ -235,57 +339,148 @@ private fun BookmarksContent(bookmarks: List<BookmarkDomainModel>) {
 }
 
 @Composable
-private fun BookDetailsContent(details: BookDetailsDomainModel) {
+private fun BookDetailsContent(
+    details: BookDetailsDomainModel,
+    onEditAuthors: () -> Unit,
+    onEditTags: () -> Unit,
+    onEditDescription: () -> Unit
+) {
     Column {
         Text(details.title, style = MaterialTheme.typography.headlineLarge)
         Spacer(modifier = Modifier.height(16.dp))
 
-        InfoRow(icon = Icons.Default.Person, title = "Авторы", content = details.authors.joinToString())
+        InfoRowWithEdit(
+            icon = Icons.Default.Person,
+            title = "Авторы",
+            content = details.authors.joinToString().ifEmpty { "Не указаны" },
+            onEditClick = onEditAuthors
+        )
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-        InfoRow(
+        InfoRowWithEdit(
             icon = Icons.Default.Description,
             title = "Описание",
-            content = details.description ?: "Описание отсутствует"
+            content = details.description.takeIf { !it.isNullOrBlank() } ?: "Отсутствует",
+            onEditClick = onEditDescription
         )
-        // TODO: Добавить кнопку "Добавить/Изменить описание"
+
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
         Text("Теги", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        TagsFlowRow(tags = details.tags)
+        TagsFlowRow(
+            tags = details.tags,
+            onAddTag = onEditTags
+        )
+
     }
 }
 
 @Composable
-private fun InfoRow(icon: ImageVector, title: String, content: String) {
+private fun InfoRowWithEdit(
+    icon: ImageVector,
+    title: String,
+    content: String,
+    onEditClick: () -> Unit
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
         Spacer(modifier = Modifier.width(16.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(content, style = MaterialTheme.typography.bodyLarge)
+        }
+        IconButton(onClick = onEditClick) {
+            Icon(Icons.Default.Edit, contentDescription = "Редактировать $title")
         }
     }
 }
 
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TagsFlowRow(tags: List<String>) {
+private fun TagsFlowRow(
+    tags: List<String>,
+    onAddTag: () -> Unit
+    ) {
     FlowRow(
         mainAxisSpacing = 8.dp,
         crossAxisSpacing = 8.dp
     ) {
         tags.forEach { tag ->
             SuggestionChip(
-                onClick = { /* TODO: Действие по клику на тег */ },
+                onClick = { onAddTag() },
                 label = { Text(tag) }
             )
         }
         SuggestionChip(
-            onClick = { /* TODO: Показать диалог добавления тега */ },
+            onClick = { onAddTag() },
             label = { Icon(Icons.Default.Add, contentDescription = "Добавить тег") },
             shape = RoundedCornerShape(16.dp)
         )
     }
+}
+
+@Composable
+fun EditListDialog(
+    title: String,
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialValue) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text("Введите значения через запятую", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Сохранить") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
+fun EditDescriptionDialog(
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(initialValue) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Редактировать описание") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                label = { Text("Описание") },
+                placeholder = { Text("Введите описание книги...") },
+                singleLine = false,
+                maxLines = 10
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(text) }) {
+                Text("Сохранить")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
 }

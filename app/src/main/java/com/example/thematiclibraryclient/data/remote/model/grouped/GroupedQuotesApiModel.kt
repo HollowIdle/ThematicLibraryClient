@@ -32,7 +32,16 @@ data class QuoteGroupApiModel(
     val id: Int,
 
     @SerializedName("selectedText")
-    val selectedText: String
+    val selectedText: String,
+
+    @SerializedName("positionStart")
+    val positionStart: Int,
+
+    @SerializedName("positionEnd")
+    val positionEnd: Int,
+
+    @SerializedName("noteContent")
+    val noteContent: String?
 )
 
 fun BookGroupApiModel.toDomainModel() = BookGroupDomainModel(
@@ -49,5 +58,8 @@ fun ShelfGroupApiModel.toDomainModel() = ShelfGroupDomainModel(
 
 fun QuoteGroupApiModel.toDomainModel() = QuoteGroupDomainModel(
     id = this.id,
-    selectedText = this.selectedText
+    selectedText = this.selectedText,
+    positionStart = this.positionStart,
+    positionEnd = this.positionEnd,
+    noteContent = this.noteContent
 )

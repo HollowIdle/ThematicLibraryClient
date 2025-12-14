@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -69,7 +71,6 @@ fun ReaderScreen(
     val snackBarHostState = remember { SnackbarHostState() }
 
     //Pagination
-    val pagerState = rememberPagerState(pageCount = { uiState.pages.size })
     var showPagePickerDialog by remember { mutableStateOf(false) }
 
     //Quote Note
@@ -103,30 +104,11 @@ fun ReaderScreen(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
-        if (!pagerState.isScrollInProgress) {
-            viewModel.onPageChanged(pagerState.currentPage)
-        }
-    }
-    LaunchedEffect(uiState.currentPage) {
-        if (pagerState.currentPage != uiState.currentPage) {
-            pagerState.animateScrollToPage(uiState.currentPage)
-        }
-    }
-
-    LaunchedEffect(key1 = uiState.pages) {
-        if (uiState.pages.isNotEmpty() && initialPosition != -1) {
-            var charCount = 0
-            var targetPage = 0
-            for ((index, page) in uiState.pages.withIndex()) {
-                if (initialPosition < charCount + page.length) {
-                    targetPage = index
-                    break
-                }
-                charCount += page.length
+    DisposableEffect(key1 = bookId) {
+        onDispose {
+            if (initialPosition == -1) {
+                viewModel.saveProgress(bookId)
             }
-            pagerState.scrollToPage(targetPage)
-            // TODO: Реализовать подсветку текста
         }
     }
 
@@ -136,10 +118,9 @@ fun ReaderScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (uiState.pages.isEmpty() && uiState.fullContent != null) "Расчет страниц..."
+                        text = if (uiState.pages.isEmpty()) "Расчет страниц..."
                         else if (uiState.isInSelectionMode) "Выделите текст"
-                        else if (uiState.pages.isNotEmpty()) "Стр. ${uiState.currentPage + 1} / ${uiState.pages.size}"
-                        else "Загрузка...",
+                        else "Стр. ${uiState.currentPage + 1} / ${uiState.pages.size}",
                         modifier = Modifier.clickable(
                             enabled = uiState.pages.isNotEmpty(),
                             onClick = { showPagePickerDialog = true }
@@ -188,6 +169,34 @@ fun ReaderScreen(
                         )
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else {
+                        val startPage = remember(uiState.pages, initialPosition) {
+                            if (initialPosition != -1) {
+                                var charCount = 0
+                                var target = 0
+                                for ((index, page) in uiState.pages.withIndex()) {
+                                    if (initialPosition < charCount + page.length) {
+                                        target = index
+                                        break
+                                    }
+                                    charCount += page.length
+                                }
+                                target
+                            } else {
+                                uiState.currentPage
+                            }
+                        }
+
+                        val pagerState = rememberPagerState(
+                            initialPage = startPage,
+                            pageCount = { uiState.pages.size }
+                        )
+
+                        LaunchedEffect(pagerState) {
+                            snapshotFlow { pagerState.currentPage }.collect { page ->
+                                viewModel.onPageChanged(page)
+                            }
+                        }
+
                         HorizontalPager(
                             state = pagerState,
                             modifier = Modifier.fillMaxSize(),
@@ -211,11 +220,24 @@ fun ReaderScreen(
                                 )
                             }
                         }
+
+                        if (showPagePickerDialog) {
+                            PagePickerDialog(
+                                pageCount = uiState.pages.size,
+                                onPageSelected = { pageIndex ->
+                                    scope.launch {
+                                        pagerState.scrollToPage(pageIndex)
+                                    }
+                                    showPagePickerDialog = false
+                                },
+                                onDismiss = { showPagePickerDialog = false }
+                            )
+                        }
                     }
                 } else if (uiState.error != null) {
                     ErrorComponent(
                         errorMessage = uiState.error!!,
-                        onRetry = {viewModel.loadBook(bookId)}
+                        onRetry = { viewModel.loadBook(bookId) }
                     )
                 }
             }
@@ -239,19 +261,6 @@ fun ReaderScreen(
         )
     }
 
-    if (showPagePickerDialog) {
-        PagePickerDialog(
-            pageCount = uiState.pages.size,
-            onPageSelected = { pageIndex ->
-                viewModel.onPageChanged(pageIndex)
-                scope.launch {
-                    pagerState.scrollToPage(pageIndex)
-                }
-                showPagePickerDialog = false
-            },
-            onDismiss = { showPagePickerDialog = false }
-        )
-    }
 }
 @Composable
 fun CreateQuoteDialog(

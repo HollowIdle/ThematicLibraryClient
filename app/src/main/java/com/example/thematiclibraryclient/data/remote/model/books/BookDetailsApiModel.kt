@@ -15,7 +15,9 @@ data class BookDetailsApiModel(
     @SerializedName("tags")
     val tags: List<String>,
     @SerializedName("shelfIds")
-    val shelfIds: List<Int>
+    val shelfIds: List<Int>,
+    @SerializedName("lastPosition")
+    val lastPosition: Int?
 )
 
 fun BookDetailsApiModel.toDomainModel() = BookDetailsDomainModel(
@@ -24,5 +26,6 @@ fun BookDetailsApiModel.toDomainModel() = BookDetailsDomainModel(
     description = this.description,
     authors = this.authors,
     tags = this.tags,
-    shelfIds = this.shelfIds
+    shelfIds = this.shelfIds,
+    lastPosition = this.lastPosition ?: 0
 )

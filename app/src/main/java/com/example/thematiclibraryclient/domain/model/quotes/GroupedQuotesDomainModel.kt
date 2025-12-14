@@ -14,5 +14,8 @@ data class BookGroupDomainModel(
 
 data class QuoteGroupDomainModel(
     val id: Int,
-    val selectedText: String
+    val selectedText: String,
+    val positionStart: Int,
+    val positionEnd: Int,
+    val noteContent: String?
 )

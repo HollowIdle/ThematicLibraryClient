@@ -7,6 +7,7 @@ import com.example.thematiclibraryclient.data.remote.model.books.UpdateDescripti
 import com.example.thematiclibraryclient.data.remote.model.common.StringListRequestApiModel
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -15,6 +16,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
+import retrofit2.http.Streaming
 
 interface IBooksApi {
 
@@ -24,8 +26,14 @@ interface IBooksApi {
     @GET("/api/books/{id}")
     suspend fun getBookDetails(@Path("id") bookId: Int): BookDetailsApiModel
 
+    /*
     @GET("/api/books/{id}/content")
     suspend fun getBookContent(@Path("id") bookId: Int): ResponseBody
+    */
+
+    @Streaming
+    @GET("/api/books/{id}/download")
+    suspend fun downloadBook(@Path("id") bookId: Int): Response<ResponseBody>
 
     @Multipart
     @POST("/api/books/upload")

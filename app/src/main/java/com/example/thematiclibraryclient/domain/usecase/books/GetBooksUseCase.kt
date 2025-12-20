@@ -1,10 +1,12 @@
 package com.example.thematiclibraryclient.domain.usecase.books
 
+import com.example.thematiclibraryclient.domain.model.books.BookDomainModel
 import com.example.thematiclibraryclient.domain.repository.IBooksRemoteRepository
-import jakarta.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
 
 class GetBooksUseCase @Inject constructor(
-    private val booksRemoteRepository: IBooksRemoteRepository
+    private val repository: IBooksRemoteRepository
 ) {
-    suspend operator fun invoke() = booksRemoteRepository.getBooks()
+    operator fun invoke(): Flow<List<BookDomainModel>> = repository.getBooks()
 }

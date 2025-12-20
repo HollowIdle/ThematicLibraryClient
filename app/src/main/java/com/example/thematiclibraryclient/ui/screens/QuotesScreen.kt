@@ -1,5 +1,8 @@
 package com.example.thematiclibraryclient.ui.screens
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -19,8 +27,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -30,9 +40,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -42,10 +54,13 @@ import com.example.thematiclibraryclient.domain.model.quotes.BookGroupDomainMode
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
+import com.example.thematiclibraryclient.ui.common.AppSearchBar
 import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
 import com.example.thematiclibraryclient.ui.common.ErrorComponent
 import com.example.thematiclibraryclient.ui.common.FlatQuotesList
 import com.example.thematiclibraryclient.ui.common.QuoteActionsDialog
+import com.example.thematiclibraryclient.ui.common.QuoteItem
+import com.example.thematiclibraryclient.ui.common.SearchScope
 import com.example.thematiclibraryclient.ui.navigation.ScreenRoute
 import com.example.thematiclibraryclient.ui.viewmodel.QuotesViewMode
 import com.example.thematiclibraryclient.ui.viewmodel.QuotesViewModel
@@ -59,6 +74,22 @@ fun QuotesScreen(
     var quoteToDelete by remember { mutableStateOf<QuoteDomainModel?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        AppSearchBar(
+            query = uiState.searchQuery,
+            onQueryChange = viewModel::onSearchQueryChanged,
+            currentScope = uiState.currentSearchScope,
+            onScopeChange = viewModel::onSearchScopeChanged,
+            availableScopes = listOf(
+                SearchScope.Everywhere,
+                SearchScope.Quote,
+                SearchScope.Title
+            ),
+            onFilterClick = { },
+            isFilterActive = false,
+            modifier = Modifier.padding(16.dp),
+            showFilterButton = false
+        )
+
         QuoteModeTabs(
             selectedMode = uiState.currentViewMode,
             onModeSelected = { viewModel.setViewMode(it) }
@@ -69,32 +100,43 @@ fun QuotesScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            val hasContent = when (uiState.currentViewMode) {
+                QuotesViewMode.GROUPED -> uiState.filteredGroupedQuotes.isNotEmpty()
+                QuotesViewMode.FLAT -> uiState.filteredFlatQuotes.isNotEmpty()
+            }
+
+            if (hasContent) {
+                when (uiState.currentViewMode) {
+                    QuotesViewMode.GROUPED -> {
+                        GroupedQuotesList(
+                            shelves = uiState.filteredGroupedQuotes,
+                            onQuoteClick = { quote -> viewModel.onQuoteSelected(quote) }
+                        )
+                    }
+                    QuotesViewMode.FLAT -> {
+                        FlatQuotesList(
+                            quotes = uiState.filteredFlatQuotes,
+                            onQuoteClick = { quote -> viewModel.onQuoteSelected(quote) },
+                            emptyMessage = "Цитаты не найдены." // Это сообщение для поиска
+                        )
+                    }
                 }
-                uiState.error != null -> {
-                    ErrorComponent(
-                        errorMessage = uiState.error!!,
-                        onRetry = { viewModel.loadQuotes() }
-                    )
-                }
-                uiState.currentViewMode == QuotesViewMode.GROUPED -> {
-                    GroupedQuotesList(
-                        shelves = uiState.groupedQuotes,
-                        onQuoteClick = { quote ->
-                            viewModel.onQuoteSelected(quote)
-                        }
-                    )
-                }
-                uiState.currentViewMode == QuotesViewMode.FLAT -> {
-                    FlatQuotesList(
-                        quotes = uiState.flatQuotes,
-                        onQuoteClick = { quote -> viewModel.onQuoteSelected(quote) },
-                        emptyMessage = "У вас пока нет ни одной цитаты."
+            } else if (uiState.error != null) {
+                ErrorComponent(
+                    errorMessage = uiState.error!!,
+                    onRetry = { viewModel.refreshQuotes() } // Используем refreshQuotes
+                )
+            } else if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = if (uiState.searchQuery.isNotEmpty()) "Ничего не найдено" else "У вас пока нет цитат",
+                        style = MaterialTheme.typography.bodyLarge
                     )
                 }
             }
+
         }
     }
 
@@ -155,18 +197,25 @@ private fun QuoteModeTabs(
 private fun GroupedQuotesList(
     shelves: List<ShelfGroupDomainModel>,
     onQuoteClick: (QuoteDomainModel) -> Unit
+) {
+    if (shelves.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("У вас пока нет полок с цитатами.")
+        }
+        return
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-    LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
         shelves.forEach { shelf ->
-            item {
-                ShelfHeader(name = shelf.shelfName)
-            }
-            shelf.books.forEach { book ->
+            if (shelf.books.isNotEmpty()) {
                 item {
-                    BookItemWithQuotes(
-                        book = book,
+                    ShelfSection(
+                        shelf = shelf,
                         onQuoteClick = onQuoteClick
-                        )
+                    )
                 }
             }
         }
@@ -174,64 +223,138 @@ private fun GroupedQuotesList(
 }
 
 @Composable
-private fun ShelfHeader(name: String) {
-    Text(
-        text = name,
-        style = MaterialTheme.typography.headlineSmall,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    )
+private fun ShelfSection(
+    shelf: ShelfGroupDomainModel,
+    onQuoteClick: (QuoteDomainModel) -> Unit
+) {
+    Column {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+            modifier = Modifier
+                .padding(end = 16.dp, bottom = 8.dp)
+                .wrapContentWidth()
+        ) {
+            Text(
+                text = shelf.shelfName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+        }
+
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            shelf.books.forEach { book ->
+                ExpandableBookItem(
+                    book = book,
+                    onQuoteClick = onQuoteClick
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun BookItemWithQuotes(
+private fun ExpandableBookItem(
     book: BookGroupDomainModel,
     onQuoteClick: (QuoteDomainModel) -> Unit
 ) {
-    Column(modifier = Modifier.padding(start = 24.dp, end = 16.dp, bottom = 16.dp)) {
-        Text(
-            text = book.bookTitle,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Spacer(Modifier.height(8.dp))
-        book.quotes.forEach { quote ->
-            QuoteItem(
-                quote = quote,
-                onClick = {
-                    val domainModel = QuoteDomainModel(
-                        id = quote.id,
-                        selectedText = quote.selectedText,
-                        positionStart = quote.positionStart,
-                        positionEnd = quote.positionEnd,
-                        noteContent = quote.noteContent,
-                        bookId = book.bookId,
-                        bookTitle = book.bookTitle
-                    )
-                    onQuoteClick(domainModel)
-                }
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
+
+    val rotationState by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        label = "ArrowRotation"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Icon(
+                    imageVector = Icons.Default.Book,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
                 )
-            Spacer(Modifier.height(4.dp))
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = book.bookTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = getQuotesCountString(book.quotes.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Развернуть",
+                    modifier = Modifier.rotate(rotationState),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (isExpanded) {
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    book.quotes.forEach { quoteGroup ->
+
+                        val domainModel = QuoteDomainModel(
+                            id = quoteGroup.id,
+                            selectedText = quoteGroup.selectedText,
+                            positionStart = quoteGroup.positionStart,
+                            positionEnd = quoteGroup.positionEnd,
+                            noteContent = quoteGroup.noteContent,
+                            bookId = book.bookId,
+                            bookTitle = book.bookTitle
+                        )
+
+                        QuoteItem(
+                            quote = domainModel,
+                            onClick = { onQuoteClick(domainModel) }
+                        )
+                    }
+                }
+            }
         }
     }
 }
+fun getQuotesCountString(count: Int): String {
+    val remainder10 = count % 10
+    val remainder100 = count % 100
 
-@Composable
-private fun QuoteItem(
-    quote: QuoteGroupDomainModel,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        onClick = { onClick() }
-    ) {
-        Text(
-            text = "“${quote.selectedText}”",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(12.dp)
-        )
+    return when {
+        remainder100 in 11..14 -> "$count цитат"
+        remainder10 == 1 -> "$count цитата"
+        remainder10 in 2..4 -> "$count цитаты"
+        else -> "$count цитат"
     }
 }

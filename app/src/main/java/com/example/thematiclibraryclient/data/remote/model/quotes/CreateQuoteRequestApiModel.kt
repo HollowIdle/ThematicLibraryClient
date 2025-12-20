@@ -13,5 +13,8 @@ data class CreateQuoteRequestApiModel(
     val positionEnd: Int?,
 
     @SerializedName("note")
-    val note: String?
+    val note: String?,
+
+    @SerializedName("locatorData")
+    val locatorData: String? = null
 )

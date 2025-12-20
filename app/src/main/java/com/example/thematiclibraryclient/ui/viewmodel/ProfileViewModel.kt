@@ -6,6 +6,7 @@ import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.user.UserDomainModel
 import com.example.thematiclibraryclient.domain.usecase.auth.LogoutUseCase
 import com.example.thematiclibraryclient.domain.usecase.users.GetUserInfoUseCase
+import com.example.thematiclibraryclient.domain.usecase.users.RefreshUserUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -23,6 +24,7 @@ data class ProfileUiState(
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val getUserInfoUseCase: GetUserInfoUseCase,
+    private val refreshUserUseCase: RefreshUserUseCase,
     private val logoutUseCase: LogoutUseCase
 ) : ViewModel() {
 
@@ -33,18 +35,35 @@ class ProfileViewModel @Inject constructor(
     val eventFlow = _eventFlow.asSharedFlow()
 
     init {
-        loadUser()
+        subscribeToUser()
+        refreshUser()
+    }
+
+    private fun subscribeToUser() {
+        viewModelScope.launch {
+            getUserInfoUseCase().collect { user ->
+                if (user != null) {
+                    _uiState.value = _uiState.value.copy(user = user)
+                }
+            }
+        }
     }
 
     fun loadUser() {
+        refreshUser()
+    }
+
+    private fun refreshUser() {
         viewModelScope.launch {
-            _uiState.value = ProfileUiState(isLoading = true)
-            when (val result = getUserInfoUseCase()) {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
+            when (val result = refreshUserUseCase()) {
                 is TResult.Success -> {
-                    _uiState.value = ProfileUiState(user = result.data)
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                 }
                 is TResult.Error -> {
-                    _uiState.value = ProfileUiState(error = "Не удалось загрузить данные профиля")
+                    val errorMsg = if (_uiState.value.user == null) "Не удалось загрузить профиль" else "Работаем оффлайн"
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = errorMsg)
                 }
             }
         }

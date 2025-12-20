@@ -1,5 +1,6 @@
 package com.example.thematiclibraryclient.data.remote.model.grouped
 
+import com.example.thematiclibraryclient.data.local.entity.QuoteEntity
 import com.example.thematiclibraryclient.domain.model.quotes.BookGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
@@ -61,5 +62,15 @@ fun QuoteGroupApiModel.toDomainModel() = QuoteGroupDomainModel(
     selectedText = this.selectedText,
     positionStart = this.positionStart,
     positionEnd = this.positionEnd,
+    noteContent = this.noteContent
+)
+
+fun QuoteGroupApiModel.toEntity(bookId: Int, bookTitle: String) = QuoteEntity(
+    id = this.id,
+    selectedText = this.selectedText,
+    positionStart = this.positionStart,
+    positionEnd = this.positionEnd,
+    bookId = bookId,
+    bookTitle = bookTitle,
     noteContent = this.noteContent
 )

@@ -2,6 +2,11 @@ package com.example.thematiclibraryclient.di
 
 import android.content.Context
 import com.example.thematiclibraryclient.data.common.SessionExpiredNotifier
+import com.example.thematiclibraryclient.data.local.dao.BookmarksDao
+import com.example.thematiclibraryclient.data.local.dao.BooksDao
+import com.example.thematiclibraryclient.data.local.dao.QuotesDao
+import com.example.thematiclibraryclient.data.local.dao.ShelvesDao
+import com.example.thematiclibraryclient.data.local.dao.UserDao
 import com.example.thematiclibraryclient.data.local.source.ITokenLocalDataSource
 import com.example.thematiclibraryclient.data.local.source.TokenLocalDataSourceImpl
 import com.example.thematiclibraryclient.data.remote.model.common.AuthInterceptor
@@ -33,6 +38,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -77,6 +85,11 @@ object AppModule {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
+
+    @Provides
+    @Singleton
+    fun provideApplicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
 
     // Api's
     @Provides
@@ -136,38 +149,53 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBooksRemoteRepository(@ApplicationContext context: Context ,booksApi: IBooksApi): IBooksRemoteRepository{
-        return BooksRemoteRepositoryImpl(context, booksApi)
+    fun provideBooksRemoteRepository(@ApplicationContext context: Context , booksApi: IBooksApi, booksDao: BooksDao): IBooksRemoteRepository{
+        return BooksRemoteRepositoryImpl(booksApi, booksDao, context)
     }
 
     @Provides
     @Singleton
-    fun provideQuotesRemoteRepository(quotesApi: IQuotesApi): IQuotesRemoteRepository {
-        return QuotesRemoteRepositoryImpl(quotesApi)
+    fun provideQuotesRemoteRepository(quotesApi: IQuotesApi, quotesDao: QuotesDao, booksDao: BooksDao, shelvesDao: ShelvesDao): IQuotesRemoteRepository {
+        return QuotesRemoteRepositoryImpl(
+            quotesApi,
+            quotesDao,
+            booksDao,
+            shelvesDao
+        )
     }
 
     @Provides
     @Singleton
-    fun provideBookmarksRemoteRepository(api: IBookmarksApi): IBookmarksRemoteRepository {
-        return BookmarksRemoteRepositoryImpl(api)
+    fun provideBookmarksRemoteRepository(api: IBookmarksApi, bookmarksDao: BookmarksDao): IBookmarksRemoteRepository {
+        return BookmarksRemoteRepositoryImpl(
+            api,
+            bookmarksDao
+        )
     }
 
     @Provides
     @Singleton
-    fun provideUserRemoteRepository(api: IUserApi): IUserRemoteRepository {
-        return UserRemoteRepositoryImpl(api)
+    fun provideUserRemoteRepository(api: IUserApi, userDao: UserDao): IUserRemoteRepository {
+        return UserRemoteRepositoryImpl(api, userDao)
     }
 
     @Provides
     @Singleton
-    fun provideNotesRemoteRepository(api: INotesApi): INotesRemoteRepository {
-        return NotesRemoteRepositoryImpl(api)
+    fun provideNotesRemoteRepository(api: INotesApi, quotesDao: QuotesDao): INotesRemoteRepository {
+        return NotesRemoteRepositoryImpl(
+            api,
+            quotesDao
+        )
     }
 
     @Provides
     @Singleton
-    fun provideShelvesRemoteRepository(api: IShelvesApi): IShelvesRemoteRepository {
-        return ShelvesRemoteRepositoryImpl(api)
+    fun provideShelvesRemoteRepository(api: IShelvesApi, shelvesDao: ShelvesDao, booksDao: BooksDao): IShelvesRemoteRepository {
+        return ShelvesRemoteRepositoryImpl(
+            api,
+            shelvesDao = shelvesDao,
+            booksDao = booksDao
+        )
     }
 
 }

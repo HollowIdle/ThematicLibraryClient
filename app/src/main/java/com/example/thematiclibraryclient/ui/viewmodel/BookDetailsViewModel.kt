@@ -1,5 +1,8 @@
 package com.example.thematiclibraryclient.ui.viewmodel
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,9 +12,11 @@ import com.example.thematiclibraryclient.domain.model.books.BookmarkDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.GetBookmarksUseCase
+import com.example.thematiclibraryclient.domain.usecase.bookmarks.RefreshBookmarksUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.AddBookToShelfUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.DeleteBookUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.GetBookDetailsUseCase
+import com.example.thematiclibraryclient.domain.usecase.books.RefreshBookDetailsUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.RemoveBookFromShelfUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookAuthorsUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookTagsUseCase
@@ -20,8 +25,9 @@ import com.example.thematiclibraryclient.domain.usecase.notes.UpsertNoteUseCase
 import com.example.thematiclibraryclient.domain.usecase.quotes.DeleteQuoteUseCase
 import com.example.thematiclibraryclient.domain.usecase.quotes.GetQuotesForBookUseCase
 import com.example.thematiclibraryclient.domain.usecase.shelves.GetShelvesUseCase
+import com.example.thematiclibraryclient.domain.usecase.shelves.RefreshBooksOnShelfUseCase
+import com.example.thematiclibraryclient.domain.usecase.shelves.RefreshShelvesUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -39,17 +45,20 @@ data class BookDetailsUiState(
 @HiltViewModel
 class BookDetailsViewModel @Inject constructor(
     private val getBookDetailsUseCase: GetBookDetailsUseCase,
-    private val getShelvesUseCase: GetShelvesUseCase,
     private val addBookToShelfUseCase: AddBookToShelfUseCase,
     private val removeBookFromShelfUseCase: RemoveBookFromShelfUseCase,
-    private val getQuotesForBookUseCase: GetQuotesForBookUseCase,
-    private val getBookmarksUseCase: GetBookmarksUseCase,
     private val updateBookAuthorsUseCase: UpdateBookAuthorsUseCase,
     private val updateBookTagsUseCase: UpdateBookTagsUseCase,
     private val updateBookDescriptionUseCase: UpdateBookDescriptionUseCase,
     private val deleteBookUseCase: DeleteBookUseCase,
     private val deleteQuoteUseCase: DeleteQuoteUseCase,
     private val upsertNoteUseCase: UpsertNoteUseCase,
+    private val refreshBookDetailsUseCase: RefreshBookDetailsUseCase,
+    private val getShelvesUseCase: GetShelvesUseCase,
+    private val refreshShelvesUseCase: RefreshShelvesUseCase,
+    private val getQuotesForBookUseCase: GetQuotesForBookUseCase,
+    private val getBookmarksUseCase: GetBookmarksUseCase,
+    private val refreshBookmarksUseCase: RefreshBookmarksUseCase,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -62,58 +71,82 @@ class BookDetailsViewModel @Inject constructor(
     val eventFlow = _eventFlow.asSharedFlow()
 
     init {
-        loadInitialData()
+        subscribeToBookDetails()
+        subscribeToShelves()
+        subscribeToQuotes()
+        subscribeToBookmarks()
+        refreshBookDetails()
+        refreshShelves()
+        refreshBookmarks()
     }
 
-    fun loadInitialData() {
+    private fun subscribeToBookmarks() {
         viewModelScope.launch {
-            _uiState.value = BookDetailsUiState(isLoading = true)
-
-            val bookDetailsDeferred = async { getBookDetailsUseCase(bookId) }
-            val shelvesDeferred = async { getShelvesUseCase() }
-            val quotesDeferred = async { getQuotesForBookUseCase(bookId) }
-            val bookmarksDeferred = async { getBookmarksUseCase(bookId) }
-
-            val bookDetailsResult = bookDetailsDeferred.await()
-            val shelvesResult = shelvesDeferred.await()
-            val quotesResult = quotesDeferred.await()
-            val bookmarksResult = bookmarksDeferred.await()
-
-            if (bookDetailsResult is TResult.Success && shelvesResult is TResult.Success) {
-                _uiState.value = BookDetailsUiState(
-                    bookDetails = bookDetailsResult.data,
-                    allShelves = shelvesResult.data,
-                    quotes = (quotesResult as? TResult.Success)?.data ?: emptyList(),
-                    bookmarks = (bookmarksResult as? TResult.Success)?.data ?: emptyList()
-                )
-            } else {
-                _uiState.value = BookDetailsUiState(error = "Не удалось загрузить данные")
+            getBookmarksUseCase(bookId).collect { bookmarks ->
+                _uiState.value = _uiState.value.copy(bookmarks = bookmarks)
             }
         }
     }
 
-    fun loadBookDetails() {
+    private fun refreshBookmarks() {
         viewModelScope.launch {
-            _uiState.value = BookDetailsUiState(isLoading = true)
-            when (val result = getBookDetailsUseCase(bookId)) {
+            refreshBookmarksUseCase(bookId)
+        }
+    }
+
+    private fun subscribeToQuotes() {
+        viewModelScope.launch {
+            getQuotesForBookUseCase(bookId).collect { quotes ->
+                _uiState.value = _uiState.value.copy(quotes = quotes)
+            }
+        }
+    }
+
+    private fun subscribeToShelves() {
+        viewModelScope.launch {
+            getShelvesUseCase().collect { shelves ->
+                _uiState.value = _uiState.value.copy(allShelves = shelves)
+            }
+        }
+    }
+
+    private fun refreshShelves() {
+        viewModelScope.launch {
+            refreshShelvesUseCase()
+        }
+    }
+
+    private fun subscribeToBookDetails() {
+        viewModelScope.launch {
+            getBookDetailsUseCase(bookId).collect { details ->
+                if (details != null) {
+                    _uiState.value = _uiState.value.copy(bookDetails = details)
+                }
+            }
+        }
+    }
+
+    fun refreshBookDetails() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+
+            when (val result = refreshBookDetailsUseCase(bookId)) {
                 is TResult.Success -> {
-                    _uiState.value = BookDetailsUiState(bookDetails = result.data)
+                    _uiState.value = _uiState.value.copy(isLoading = false)
                 }
                 is TResult.Error -> {
-                    _uiState.value = BookDetailsUiState(error = "Не удалось загрузить детали книги")
+                    val errorMsg = if (_uiState.value.bookDetails == null) "Не удалось загрузить книгу" else "Работаем оффлайн"
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = errorMsg)
                 }
             }
         }
     }
+
 
     fun updateAuthors(authors: List<String>) {
         viewModelScope.launch {
             when (updateBookAuthorsUseCase(bookId, authors)) {
-                is TResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        bookDetails = _uiState.value.bookDetails?.copy(authors = authors)
-                    )
-                }
+                is TResult.Success -> { }
                 is TResult.Error -> { _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении списка авторов")) }
             }
         }
@@ -122,11 +155,7 @@ class BookDetailsViewModel @Inject constructor(
     fun updateTags(tags: List<String>) {
         viewModelScope.launch {
             when (updateBookTagsUseCase(bookId, tags)) {
-                is TResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        bookDetails = _uiState.value.bookDetails?.copy(tags = tags)
-                    )
-                }
+                is TResult.Success -> { }
                 is TResult.Error -> { _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении списка тегов")) }
             }
         }
@@ -135,11 +164,7 @@ class BookDetailsViewModel @Inject constructor(
     fun updateDescription(description: String) {
         viewModelScope.launch {
             when (updateBookDescriptionUseCase(bookId, description)) {
-                is TResult.Success -> {
-                    _uiState.value = _uiState.value.copy(
-                        bookDetails = _uiState.value.bookDetails?.copy(description = description)
-                    )
-                }
+                is TResult.Success -> { }
                 is TResult.Error -> {
                     _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при обновлении описания книги"))
                 }
@@ -151,6 +176,7 @@ class BookDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             when (deleteBookUseCase(bookId)) {
                 is TResult.Success -> {
+                    _uiState.value = _uiState.value.copy(selectedQuote = null)
                     _eventFlow.emit(UiEvent.NavigateBack)
                 }
                 is TResult.Error -> {
@@ -168,18 +194,8 @@ class BookDetailsViewModel @Inject constructor(
                 removeBookFromShelfUseCase(shelfId, bookId)
             }
 
-            if (result is TResult.Success) {
-                val updatedShelfIds = _uiState.value.bookDetails?.shelfIds?.toMutableList() ?: mutableListOf()
-                if (belongsToShelf) {
-                    updatedShelfIds.add(shelfId)
-                } else {
-                    updatedShelfIds.remove(shelfId)
-                }
-                _uiState.value = _uiState.value.copy(
-                    bookDetails = _uiState.value.bookDetails?.copy(shelfIds = updatedShelfIds)
-                )
-            } else {
-                _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при изменения нахождения книги на полке"))
+            if (result !is TResult.Success) {
+                _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка при изменении нахождения книги на полке"))
             }
         }
     }
@@ -196,8 +212,7 @@ class BookDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             when (deleteQuoteUseCase(quoteToDelete.id)) {
                 is TResult.Success -> {
-                    val updatedList = _uiState.value.quotes.filterNot { it.id == quoteToDelete.id }
-                    _uiState.value = _uiState.value.copy(quotes = updatedList, selectedQuote = null)
+                    _uiState.value = _uiState.value.copy(selectedQuote = null)
                 }
                 is TResult.Error -> {  }
             }
@@ -209,10 +224,7 @@ class BookDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             when (upsertNoteUseCase(quoteToUpdate.id, noteContent)) {
                 is TResult.Success -> {
-                    val updatedList = _uiState.value.quotes.map {
-                        if (it.id == quoteToUpdate.id) it.copy(noteContent = noteContent) else it
-                    }
-                    _uiState.value = _uiState.value.copy(quotes = updatedList, selectedQuote = null)
+                    _uiState.value = _uiState.value.copy(selectedQuote = null)
                 }
                 is TResult.Error -> {  }
             }
@@ -222,5 +234,12 @@ class BookDetailsViewModel @Inject constructor(
     sealed class UiEvent {
         object NavigateBack : UiEvent()
         data class ShowSnackbar(val message: String) : UiEvent()
+    }
+
+    var selectedTabIndex by mutableStateOf(0)
+        private set
+
+    fun onTabSelected(index: Int) {
+        selectedTabIndex = index
     }
 }

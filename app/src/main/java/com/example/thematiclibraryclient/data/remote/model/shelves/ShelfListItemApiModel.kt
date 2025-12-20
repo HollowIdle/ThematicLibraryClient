@@ -1,5 +1,6 @@
 package com.example.thematiclibraryclient.data.remote.model.shelves
 
+import com.example.thematiclibraryclient.data.local.entity.ShelfEntity
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
 import com.google.gson.annotations.SerializedName
 
@@ -12,6 +13,11 @@ data class ShelfListItemApiModel(
 )
 
 fun ShelfListItemApiModel.toDomainModel() = ShelfDomainModel(
+    id = this.id,
+    name = this.name
+)
+
+fun ShelfListItemApiModel.toEntity() = ShelfEntity(
     id = this.id,
     name = this.name
 )

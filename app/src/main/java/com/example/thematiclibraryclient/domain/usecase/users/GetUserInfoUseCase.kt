@@ -6,5 +6,5 @@ import jakarta.inject.Inject
 class GetUserInfoUseCase @Inject constructor(
     private val repository: IUserRemoteRepository
 ) {
-    suspend operator fun invoke() = repository.getUserInfo()
+    operator fun invoke() = repository.getUser()
 }

@@ -6,5 +6,5 @@ import jakarta.inject.Inject
 class GetBookContentUseCase @Inject constructor(
     private val repository: IBooksRemoteRepository
 ) {
-    suspend operator fun invoke(bookId: Int) = repository.getBookContent(bookId)
+  //  suspend operator fun invoke(bookId: Int) = repository.getBookContent(bookId)
 }

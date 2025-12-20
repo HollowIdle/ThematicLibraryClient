@@ -17,7 +17,10 @@ sealed class ScreenRoute(val route: String) {
 
     data object Profile : ScreenRoute("profile_screen")
 
-    data object ShelfManagement : ScreenRoute("shelf_management_screen")
+    data object ShelfBooks : ScreenRoute("shelf_books_screen/{shelfId}/{shelfName}") {
+        fun createRoute(shelfId: Int, shelfName: String): String =
+            "shelf_books_screen/$shelfId/$shelfName"
+    }
 
     data object BookDetails : ScreenRoute("book_details_screen/{bookId}") {
         fun createRoute(bookId: Int): String = "book_details_screen/$bookId"

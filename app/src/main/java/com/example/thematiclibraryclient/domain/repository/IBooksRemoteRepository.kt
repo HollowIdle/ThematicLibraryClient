@@ -6,16 +6,22 @@ import com.example.thematiclibraryclient.domain.model.books.BookDetailsDomainMod
 import com.example.thematiclibraryclient.domain.model.books.BookDomainModel
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
 import kotlinx.coroutines.flow.Flow
+import java.io.File
 
 interface IBooksRemoteRepository {
 
-    val booksUpdateFlow: Flow<Unit>
-    suspend fun getBooks(): TResult<List<BookDomainModel>,
-            ConnectionExceptionDomainModel>
-    suspend fun getBookContent(bookId: Int): TResult<String, ConnectionExceptionDomainModel>
 
-    suspend fun getBookDetails(bookId: Int): TResult<BookDetailsDomainModel, ConnectionExceptionDomainModel>
-    suspend fun uploadBook(fileUri: Uri) : TResult<BookDomainModel, ConnectionExceptionDomainModel>
+    fun getBooks(): Flow<List<BookDomainModel>>
+
+    fun getBookDetails(bookId: Int): Flow<BookDetailsDomainModel?>
+
+    suspend fun refreshBooks(): TResult<Unit, ConnectionExceptionDomainModel>
+
+    suspend fun refreshBookDetails(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
+
+    suspend fun uploadBook(fileUri: Uri): TResult<Unit, ConnectionExceptionDomainModel> // Изменили возвращаемый тип на Unit, так как список обновится через Flow
+
+    suspend fun deleteBook(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
 
     suspend fun updateAuthors(bookId: Int, authors: List<String>): TResult<Unit, ConnectionExceptionDomainModel>
 
@@ -23,6 +29,13 @@ interface IBooksRemoteRepository {
 
     suspend fun updateDescription(bookId: Int, description: String): TResult<Unit, ConnectionExceptionDomainModel>
 
+    /*
+    suspend fun getBookContent(bookId: Int): TResult<String, ConnectionExceptionDomainModel>
+    */
+
+    suspend fun downloadBookFile(bookId: Int, fileName: String): TResult<File, ConnectionExceptionDomainModel>
+
     suspend fun updateProgress(bookId: Int, position: Int): TResult<Unit, ConnectionExceptionDomainModel>
-    suspend fun deleteBook(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
+
+    val booksUpdateFlow: Flow<Unit>
 }

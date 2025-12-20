@@ -12,8 +12,7 @@ import com.example.thematiclibraryclient.ui.screens.LibraryScreen
 import com.example.thematiclibraryclient.ui.screens.ProfileScreen
 import com.example.thematiclibraryclient.ui.screens.QuotesScreen
 import com.example.thematiclibraryclient.ui.screens.ReaderScreen
-import com.example.thematiclibraryclient.ui.screens.ShelfManagementScreen
-
+import com.example.thematiclibraryclient.ui.screens.ShelfBooksScreen
 @Composable
 fun AppNavigation(
     modifier: Modifier = Modifier,
@@ -48,7 +47,8 @@ fun AppNavigation(
             val position = backStackEntry.arguments?.getInt("position") ?: -1
             ReaderScreen(
                 bookId = bookId,
-                initialPosition = position
+                initialPosition = position,
+                navController = navController
             )
         }
 
@@ -63,8 +63,21 @@ fun AppNavigation(
             )
         }
 
-        composable(ScreenRoute.ShelfManagement.route) {
-            ShelfManagementScreen()
+        composable(
+            route = ScreenRoute.ShelfBooks.route,
+            arguments = listOf(
+                navArgument("shelfId") { type = NavType.IntType },
+                navArgument("shelfName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val shelfId = backStackEntry.arguments?.getInt("shelfId") ?: 0
+            val shelfName = backStackEntry.arguments?.getString("shelfName") ?: ""
+
+            ShelfBooksScreen(
+                shelfId = shelfId,
+                shelfName = shelfName,
+                navController = navController
+            )
         }
 
     }

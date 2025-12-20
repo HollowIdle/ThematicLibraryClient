@@ -54,6 +54,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.webkit)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -90,4 +91,14 @@ dependencies {
     // Pagination
     implementation(libs.androidx.compose.foundation)
 
+    //Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    kapt(libs.androidx.room.compiler)
+
+    //PDF/DOCX/EPUB
+    implementation(libs.jsoup)
+    implementation(libs.mammoth)
+    implementation(libs.xercesimpl)
+    implementation(libs.html.to.pdf.convertor)
 }

@@ -7,5 +7,6 @@ data class QuoteDomainModel(
     val positionEnd: Int,
     val bookId: Int,
     val bookTitle: String = "",
-    val noteContent: String? = null
+    val noteContent: String? = null,
+    val locatorData: String? = null
 )

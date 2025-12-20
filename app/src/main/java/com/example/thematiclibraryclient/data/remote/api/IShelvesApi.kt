@@ -1,5 +1,6 @@
 package com.example.thematiclibraryclient.data.remote.api
 
+import com.example.thematiclibraryclient.data.remote.model.books.BookListItemApiModel
 import com.example.thematiclibraryclient.data.remote.model.shelves.ShelfListItemApiModel
 import com.example.thematiclibraryclient.data.remote.model.shelves.ShelfRequestApiModel
 import retrofit2.http.Body
@@ -12,6 +13,9 @@ import retrofit2.http.Path
 interface IShelvesApi {
     @GET("/api/shelves")
     suspend fun getShelves(): List<ShelfListItemApiModel>
+
+    @GET("/api/shelves/{id}/books")
+    suspend fun getBooksOnShelf(@Path("id") shelfId: Int): List<BookListItemApiModel>
 
     @POST("/api/shelves")
     suspend fun createShelf(@Body request: ShelfRequestApiModel): ShelfListItemApiModel

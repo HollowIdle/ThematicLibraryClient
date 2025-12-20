@@ -6,5 +6,5 @@ import jakarta.inject.Inject
 class GetBookmarksUseCase @Inject constructor(
     private val repository: IBookmarksRemoteRepository
 ) {
-    suspend operator fun invoke(bookId: Int) = repository.getBookmarksForBook(bookId)
+    operator fun invoke(bookId: Int) = repository.getBookmarks(bookId)
 }

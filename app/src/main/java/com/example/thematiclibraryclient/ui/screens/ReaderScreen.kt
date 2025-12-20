@@ -1,6 +1,5 @@
 package com.example.thematiclibraryclient.ui.screens
 
-import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +13,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
@@ -47,68 +47,70 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
 import com.example.thematiclibraryclient.ui.common.ErrorComponent
 import com.example.thematiclibraryclient.ui.common.Paginator
 import com.example.thematiclibraryclient.ui.viewmodel.ReaderViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+data class PendingQuoteData(
+    val text: String,
+    val start: Int,
+    val end: Int,
+    val locatorData: String? = null,
+    val pageIndex: Int = 0
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
     bookId: Int,
     initialPosition: Int,
+    navController: NavHostController,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
-    //Primary
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
     val snackBarHostState = remember { SnackbarHostState() }
 
-    //Pagination
-    var showPagePickerDialog by remember { mutableStateOf(false) }
-
-    //Quote Note
     var showQuoteDialog by remember { mutableStateOf(false) }
-    var quoteDataToCreate by remember { mutableStateOf<Triple<String, Int, Int>?>(null) }
+    var quoteTextToCreate by remember { mutableStateOf("") }
+    var quoteStart by remember { mutableStateOf(0) }
+    var quoteEnd by remember { mutableStateOf(0) }
 
-    //Bookmark
+    var showPagePickerDialog by remember { mutableStateOf(false) }
     val isBookmarked = uiState.bookmarks.any { it.position == uiState.currentPage }
 
-    //Style
     val textStyle = MaterialTheme.typography.bodyLarge.copy(
         lineHeight = MaterialTheme.typography.bodyLarge.fontSize * 1.5,
         textAlign = TextAlign.Justify
     )
     val pagePadding = PaddingValues(16.dp)
 
-
     LaunchedEffect(key1 = true) {
         viewModel.eventFlow.collectLatest { event ->
             when (event) {
-                is ReaderViewModel.UiEvent.ShowSnackbar -> {
-                    snackBarHostState.showSnackbar(message = event.message)
-                }
+                is ReaderViewModel.UiEvent.ShowSnackbar -> snackBarHostState.showSnackbar(event.message)
             }
         }
     }
 
     LaunchedEffect(key1 = bookId) {
-        if (uiState.fullContent == null && !uiState.isLoading) {
-            viewModel.loadBook(bookId)
+        if (uiState.fullContent == null && uiState.pdfPath == null && !uiState.isLoading) {
+            viewModel.loadBook(bookId, initialPosition)
         }
     }
 
     DisposableEffect(key1 = bookId) {
         onDispose {
-            if (initialPosition == -1) {
-                viewModel.saveProgress(bookId)
-            }
+            if (initialPosition == -1) viewModel.saveProgress(bookId)
         }
     }
 
@@ -118,150 +120,156 @@ fun ReaderScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = if (uiState.pages.isEmpty()) "Расчет страниц..."
-                        else if (uiState.isInSelectionMode) "Выделите текст"
+                        text = if (uiState.isLoading) "Загрузка..."
+                        else if (uiState.isPdfMode) "Стр. ${uiState.currentPage + 1}"
                         else "Стр. ${uiState.currentPage + 1} / ${uiState.pages.size}",
-                        modifier = Modifier.clickable(
-                            enabled = uiState.pages.isNotEmpty(),
-                            onClick = { showPagePickerDialog = true }
-                        )
+                        modifier = Modifier.clickable(enabled = !uiState.isPdfMode && uiState.pages.isNotEmpty()) {
+                            showPagePickerDialog = true
+                        }
                     )
                 },
-                actions = {
-                    IconButton(onClick = { viewModel.toggleSelectionMode() }) {
-                        Icon(
-                            imageVector = if (uiState.isInSelectionMode) Icons.Default.Close else Icons.Default.FormatQuote,
-                            contentDescription = "Режим цитирования"
-                        )
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
-                    if (!uiState.isInSelectionMode) {
-                        IconButton(onClick = { viewModel.toggleBookmark(bookId) }) {
+                },
+                actions = {
+                    if (!uiState.isPdfMode) {
+                        IconButton(onClick = { viewModel.toggleSelectionMode() }) {
                             Icon(
-                                imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = "Добавить/удалить закладку",
-                                tint = if (isBookmarked) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                imageVector = if (uiState.isInSelectionMode) Icons.Default.Close else Icons.Default.FormatQuote,
+                                contentDescription = "Режим цитирования"
                             )
                         }
+                    }
+                    IconButton(onClick = { viewModel.toggleBookmark(bookId) }) {
+                        Icon(
+                            imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            tint = if (isBookmarked) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                            contentDescription = "Закладка"
+                        )
                     }
                 }
             )
         }
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (uiState.error != null) {
+                ErrorComponent(errorMessage = uiState.error!!, onRetry = { viewModel.loadBook(bookId) })
             } else {
-                val content = uiState.fullContent
 
-                if (content != null) {
-                    if (uiState.pages.isEmpty()) {
-                        Paginator(
-                            fullText = content,
-                            style = textStyle,
-                            contentPadding = pagePadding,
-                            onPagesCalculated = { pages ->
-                                viewModel.onPagesCalculated(pages)
-                            }
-                        )
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    } else {
-                        val startPage = remember(uiState.pages, initialPosition) {
-                            if (initialPosition != -1) {
-                                var charCount = 0
-                                var target = 0
-                                for ((index, page) in uiState.pages.withIndex()) {
-                                    if (initialPosition < charCount + page.length) {
-                                        target = index
-                                        break
-                                    }
-                                    charCount += page.length
-                                }
-                                target
-                            } else {
-                                uiState.currentPage
-                            }
+                if (uiState.isPdfMode && uiState.pdfPath != null) {
+                    PdfJsReaderScreen(
+                        filePath = uiState.pdfPath!!,
+                        initialPage = uiState.currentPage,
+                        onQuoteCreated = { text ->
+                            quoteTextToCreate = text
+                            showQuoteDialog = true
+                        },
+                        onPageChanged = { page -> viewModel.onPageChanged(page) }
+                    )
+                } else if (uiState.fullContent != null) {
+                    TextReaderContent(
+                        uiState = uiState,
+                        textStyle = textStyle,
+                        pagePadding = pagePadding,
+                        onPagesUpdated = viewModel::onPagesUpdated,
+                        onPageChanged = viewModel::onPageChanged,
+                        onQuoteCreateRequested = { text, start, end ->
+                            quoteTextToCreate = text
+                            quoteStart = start
+                            quoteEnd = end
+                            showQuoteDialog = true
                         }
-
-                        val pagerState = rememberPagerState(
-                            initialPage = startPage,
-                            pageCount = { uiState.pages.size }
-                        )
-
-                        LaunchedEffect(pagerState) {
-                            snapshotFlow { pagerState.currentPage }.collect { page ->
-                                viewModel.onPageChanged(page)
-                            }
-                        }
-
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxSize(),
-                            userScrollEnabled = !uiState.isInSelectionMode
-                        ) { pageIndex ->
-                            if (uiState.isInSelectionMode && pageIndex == uiState.currentPage) {
-                                SelectionPageContent(
-                                    text = uiState.pages[pageIndex],
-                                    style = textStyle,
-                                    padding = pagePadding,
-                                    onQuoteCreateRequested = { selectedText, start, end ->
-                                        quoteDataToCreate = Triple(selectedText, start, end)
-                                        showQuoteDialog = true
-                                    }
-                                )
-                            } else {
-                                ReadingPageContent(
-                                    text = uiState.pages[pageIndex],
-                                    style = textStyle,
-                                    padding = pagePadding
-                                )
-                            }
-                        }
-
-                        if (showPagePickerDialog) {
-                            PagePickerDialog(
-                                pageCount = uiState.pages.size,
-                                onPageSelected = { pageIndex ->
-                                    scope.launch {
-                                        pagerState.scrollToPage(pageIndex)
-                                    }
-                                    showPagePickerDialog = false
-                                },
-                                onDismiss = { showPagePickerDialog = false }
-                            )
-                        }
-                    }
-                } else if (uiState.error != null) {
-                    ErrorComponent(
-                        errorMessage = uiState.error!!,
-                        onRetry = { viewModel.loadBook(bookId) }
                     )
                 }
             }
         }
     }
 
-    if (showQuoteDialog && quoteDataToCreate != null) {
+    if (showQuoteDialog) {
         CreateQuoteDialog(
-            quoteText = quoteDataToCreate!!.first,
-            onDismiss = {
-                showQuoteDialog = false
-                quoteDataToCreate = null
-            },
+            quoteText = quoteTextToCreate,
+            onDismiss = { showQuoteDialog = false },
             onConfirm = { note ->
-                val (text, start, end) = quoteDataToCreate!!
-                viewModel.createQuote(bookId, text, start, end, note)
+                viewModel.createQuote(bookId, quoteTextToCreate, quoteStart, quoteEnd, note)
                 showQuoteDialog = false
-                quoteDataToCreate = null
-                viewModel.toggleSelectionMode()
+                if (uiState.isInSelectionMode) viewModel.toggleSelectionMode()
             }
         )
     }
 
+    if (showPagePickerDialog) {
+        PagePickerDialog(
+            pageCount = uiState.pages.size,
+            onPageSelected = { pageIndex ->
+                viewModel.onPageChanged(pageIndex)
+            },
+            onDismiss = { showPagePickerDialog = false }
+        )
+    }
 }
+
+
+
+
+@Composable
+fun TextReaderContent(
+    uiState: com.example.thematiclibraryclient.ui.viewmodel.ReaderUiState,
+    textStyle: TextStyle,
+    pagePadding: PaddingValues,
+    onPagesUpdated: (List<AnnotatedString>) -> Unit,
+    onPageChanged: (Int) -> Unit,
+    onQuoteCreateRequested: (String, Int, Int) -> Unit
+) {
+    val pagerState = rememberPagerState(pageCount = { uiState.pages.size })
+
+    LaunchedEffect(uiState.currentPage) {
+        if (pagerState.currentPage != uiState.currentPage && uiState.pages.isNotEmpty()) {
+            pagerState.scrollToPage(uiState.currentPage)
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            onPageChanged(page)
+        }
+    }
+
+    Paginator(
+        fullText = uiState.fullContent,
+        style = textStyle,
+        contentPadding = pagePadding,
+        onPagesUpdated = onPagesUpdated
+    )
+
+    if (uiState.pages.isNotEmpty()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !uiState.isInSelectionMode
+        ) { pageIndex ->
+            if (pageIndex < uiState.pages.size) {
+                if (uiState.isInSelectionMode && pageIndex == uiState.currentPage) {
+                    SelectionPageContent(
+                        text = uiState.pages[pageIndex],
+                        style = textStyle,
+                        padding = pagePadding,
+                        onQuoteCreateRequested = onQuoteCreateRequested
+                    )
+                } else {
+                    ReadingPageContent(
+                        text = uiState.pages[pageIndex],
+                        style = textStyle,
+                        padding = pagePadding
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun CreateQuoteDialog(
     quoteText: String,
@@ -332,7 +340,7 @@ private fun PagePickerDialog(
 
 @Composable
 fun ReadingPageContent(
-    text: String,
+    text: AnnotatedString,
     style: TextStyle,
     padding: PaddingValues
 ) {
@@ -350,7 +358,7 @@ fun ReadingPageContent(
 
 @Composable
 private fun SelectionPageContent(
-    text: String,
+    text: AnnotatedString,
     style: TextStyle,
     padding: PaddingValues,
     onQuoteCreateRequested: (String, Int, Int) -> Unit

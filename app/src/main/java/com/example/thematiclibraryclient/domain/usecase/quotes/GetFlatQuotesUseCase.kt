@@ -6,5 +6,5 @@ import jakarta.inject.Inject
 class GetFlatQuotesUseCase @Inject constructor(
     private val repository: IQuotesRemoteRepository
 ) {
-    suspend operator fun invoke() = repository.getFlatQuotes()
+    operator fun invoke() = repository.getFlatQuotes()
 }

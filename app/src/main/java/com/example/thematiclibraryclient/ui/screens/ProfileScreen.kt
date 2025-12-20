@@ -42,23 +42,19 @@ fun ProfileScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            uiState.isLoading -> {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            }
-            uiState.error != null -> {
-                ErrorComponent(
-                    errorMessage = uiState.error!!,
-                    onRetry = { viewModel.loadUser() }
-                )
-            }
-            uiState.user != null -> {
-                ProfileContent(
-                    username = uiState.user!!.username,
-                    email = uiState.user!!.email,
-                    onLogoutClick = { viewModel.logout() }
-                )
-            }
+        if (uiState.user != null) {
+            ProfileContent(
+                username = uiState.user!!.username,
+                email = uiState.user!!.email,
+                onLogoutClick = { viewModel.logout() }
+            )
+        } else if (uiState.error != null) {
+            ErrorComponent(
+                errorMessage = uiState.error!!,
+                onRetry = { viewModel.loadUser() }
+            )
+        } else if (uiState.isLoading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
     }
 }

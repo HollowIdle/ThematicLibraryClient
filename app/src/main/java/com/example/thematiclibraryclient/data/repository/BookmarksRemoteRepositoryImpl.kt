@@ -58,7 +58,7 @@ class BookmarksRemoteRepositoryImpl @Inject constructor(
         return try {
             bookmarksApi.deleteBookmark(bookmarkId)
 
-            bookmarksDao.deleteBookmark(bookmarkId)
+            bookmarksDao.deleteBookmarkPhysically(bookmarkId)
 
             TResult.Success(Unit)
         } catch (e: Throwable) {

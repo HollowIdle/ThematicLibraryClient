@@ -13,6 +13,9 @@ interface QuotesDao {
     @Query("SELECT * FROM quotes WHERE isDeleted = 0 ORDER BY id DESC")
     fun getAllQuotes(): Flow<List<QuoteEntity>>
 
+    @Query("SELECT * FROM quotes WHERE id = :quoteId")
+    suspend fun getQuoteEntityById(quoteId: Int): QuoteEntity?
+
     @Query("SELECT * FROM quotes WHERE bookId = :bookId AND isDeleted = 0 ORDER BY positionStart ASC")
     fun getQuotesForBook(bookId: Int): Flow<List<QuoteEntity>>
 

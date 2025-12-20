@@ -33,12 +33,15 @@ fun BookDetailsApiModel.toDomainModel() = BookDetailsDomainModel(
 )
 
 fun BookDetailsApiModel.toEntity() = BookEntity(
-    id = this.id,
+    id = 0,
+    serverId = this.id,
     title = this.title,
     description = this.description,
     authors = this.authors.map { AuthorDomainModel(it) },
     tags = this.tags,
     shelfIds = this.shelfIds,
     lastPosition = this.lastPosition ?: 0,
-    isDetailsLoaded = true
+    isDetailsLoaded = true,
+    filePath = null,
+    isSynced = true
 )

@@ -1,6 +1,7 @@
 package com.example.thematiclibraryclient.domain.common
 
 import android.util.Log
+import com.example.thematiclibraryclient.domain.model.books.LocalBookMetadata
 import org.jsoup.Jsoup
 import org.zwobble.mammoth.DocumentConverter
 import org.zwobble.mammoth.Result
@@ -13,6 +14,71 @@ import javax.inject.Singleton
 
 @Singleton
 class LocalBookParser @Inject constructor() {
+
+    fun parseMetadata(file: File): LocalBookMetadata {
+        val extension = file.extension.lowercase()
+        return try {
+            when (extension) {
+                "epub" -> parseEpubMetadata(file)
+                "fb2" -> parseFb2Metadata(file)
+                else -> LocalBookMetadata(
+                    title = file.nameWithoutExtension,
+                    authors = emptyList()
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("LocalBookParser", "Error parsing metadata for ${file.name}", e)
+            LocalBookMetadata(title = file.nameWithoutExtension, authors = emptyList())
+        }
+    }
+
+    private fun parseEpubMetadata(file: File): LocalBookMetadata {
+        val unzipDir = File(file.parent, "${file.name}_meta_temp")
+        if (unzipDir.exists()) unzipDir.deleteRecursively()
+
+        try {
+
+            unzip(file, unzipDir)
+
+            val containerXml = File(unzipDir, "META-INF/container.xml")
+            if (!containerXml.exists()) throw Exception("No container.xml")
+
+            val containerDoc = Jsoup.parse(containerXml, "UTF-8")
+            val rootPath = containerDoc.getElementsByTag("rootfile").attr("full-path")
+            val opfFile = File(unzipDir, rootPath)
+
+            if (!opfFile.exists()) throw Exception("No OPF file")
+
+            val opfDoc = Jsoup.parse(opfFile, "UTF-8")
+
+            val title = opfDoc.getElementsByTag("dc:title").text().ifBlank { file.nameWithoutExtension }
+            val authors = opfDoc.getElementsByTag("dc:creator").map { it.text() }
+            val description = opfDoc.getElementsByTag("dc:description").text()
+
+            return LocalBookMetadata(title, authors, description.ifBlank { null })
+        } finally {
+            unzipDir.deleteRecursively()
+        }
+    }
+
+    private fun parseFb2Metadata(file: File): LocalBookMetadata {
+        val doc = Jsoup.parse(file, "UTF-8")
+        val titleInfo = doc.select("description title-info")
+
+        val title = titleInfo.select("book-title").text().ifBlank { file.nameWithoutExtension }
+
+        val authors = titleInfo.select("author").map { authorTag ->
+            val first = authorTag.select("first-name").text()
+            val last = authorTag.select("last-name").text()
+            val middle = authorTag.select("middle-name").text()
+            listOf(first, middle, last).filter { it.isNotBlank() }.joinToString(" ")
+        }.filter { it.isNotBlank() }
+
+        val description = titleInfo.select("annotation").text()
+
+        return LocalBookMetadata(title, authors, description.ifBlank { null })
+    }
+
     fun parseToHtml(file: File): String {
         val extension = file.extension.lowercase()
         return when (extension) {

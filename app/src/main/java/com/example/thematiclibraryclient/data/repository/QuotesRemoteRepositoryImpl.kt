@@ -3,11 +3,11 @@ package com.example.thematiclibraryclient.data.repository
 import com.example.thematiclibraryclient.data.local.dao.BooksDao
 import com.example.thematiclibraryclient.data.local.dao.QuotesDao
 import com.example.thematiclibraryclient.data.local.dao.ShelvesDao
+import com.example.thematiclibraryclient.data.local.entity.QuoteEntity
 import com.example.thematiclibraryclient.data.local.entity.toDomainModel
 import com.example.thematiclibraryclient.data.mapper.toConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.data.remote.api.IQuotesApi
 import com.example.thematiclibraryclient.data.remote.model.quotes.CreateQuoteRequestApiModel
-import com.example.thematiclibraryclient.data.remote.model.quotes.toEntity
 import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.BookGroupDomainModel
@@ -38,7 +38,6 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
             entities.map { it.toDomainModel() }
         }
     }
-
 
     override fun getGroupedQuotes(): Flow<List<ShelfGroupDomainModel>> {
         return combine(
@@ -84,7 +83,25 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
     override suspend fun refreshQuotes(): TResult<Unit, ConnectionExceptionDomainModel> {
         return try {
             val apiQuotes = quotesApi.getFlatQuotes()
-            quotesDao.insertQuotes(apiQuotes.map { it.toEntity() })
+
+            val entities = apiQuotes.map { apiQuote ->
+                val existing = quotesDao.getQuoteByServerId(apiQuote.id)
+
+                QuoteEntity(
+                    id = existing?.id ?: 0,
+                    serverId = apiQuote.id,
+                    selectedText = apiQuote.selectedText,
+                    positionStart = apiQuote.positionStart,
+                    positionEnd = apiQuote.positionEnd,
+                    bookId = booksDao.getBookByServerId(apiQuote.book.id)?.id ?: 0,
+                    bookTitle = apiQuote.book.title,
+                    noteContent = apiQuote.noteContent,
+                    isSynced = true,
+                    isDeleted = false
+                )
+            }.filter { it.bookId != 0 }
+
+            quotesDao.insertQuotes(entities)
             TResult.Success(Unit)
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())
@@ -103,38 +120,63 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
         note: String?,
         locatorData: String?
     ): TResult<Unit, ConnectionExceptionDomainModel> {
-        return try {
-            val request = CreateQuoteRequestApiModel(
-                selectedText = text,
-                positionStart = start,
-                positionEnd = end,
-                note = note,
-                locatorData = locatorData
-            )
+        val bookEntity = booksDao.getBookEntityById(bookId)
+            ?: return TResult.Error(Exception("Book not found locally").toConnectionExceptionDomainModel())
 
-            val createdQuoteApi = quotesApi.createQuote(bookId, request)
+        val newQuote = QuoteEntity(
+            selectedText = text,
+            positionStart = start,
+            positionEnd = end,
+            bookId = bookId,
+            bookTitle = bookEntity.title,
+            noteContent = note,
+            locatorData = locatorData,
+            isSynced = false,
+            serverId = null
+        )
 
-            val bookEntity = booksDao.getBookEntityById(bookId)
-                ?: throw IllegalStateException("Книга с ID $bookId не найдена в локальной базе")
+        val localQuoteId = quotesDao.insertQuote(newQuote).toInt()
 
-            val quoteEntity = createdQuoteApi.toEntity(
-                bookId = bookId,
-                bookTitle = bookEntity.title
-            )
+        if (bookEntity.serverId != null) {
+            try {
+                val request = CreateQuoteRequestApiModel(
+                    selectedText = text,
+                    positionStart = start,
+                    positionEnd = end,
+                    note = note,
+                    locatorData = locatorData
+                )
+                val apiResponse = quotesApi.createQuote(bookEntity.serverId, request)
 
-            quotesDao.insertQuote(quoteEntity)
-
-            TResult.Success(Unit)
-
-        } catch (e: Throwable) {
-            TResult.Error(e.toConnectionExceptionDomainModel())
+                val syncedQuote = newQuote.copy(
+                    id = localQuoteId,
+                    serverId = apiResponse.id,
+                    isSynced = true
+                )
+                quotesDao.insertQuote(syncedQuote)
+            } catch (e: Exception) {
+            }
         }
+
+        return TResult.Success(Unit)
     }
 
     override suspend fun deleteQuote(quoteId: Int): TResult<Unit, ConnectionExceptionDomainModel> {
         return try {
-            quotesApi.deleteQuote(quoteId)
-            quotesDao.deleteQuote(quoteId)
+            val quote = quotesDao.getQuoteEntityById(quoteId)
+                ?: return TResult.Error(Exception("Quote not found").toConnectionExceptionDomainModel())
+
+            if (quote.serverId == null) {
+                quotesDao.deleteQuotePhysically(quoteId)
+            } else {
+                quotesDao.markAsDeleted(quoteId)
+
+                try {
+                    quotesApi.deleteQuote(quote.serverId)
+                    quotesDao.deleteQuotePhysically(quoteId)
+                } catch (e: Exception) {
+                }
+            }
             TResult.Success(Unit)
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())

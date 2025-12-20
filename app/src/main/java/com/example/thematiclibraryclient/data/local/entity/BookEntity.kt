@@ -18,6 +18,7 @@ data class BookEntity(
     val shelfIds: List<Int>,
     val lastPosition: Int = 0,
     val isDetailsLoaded: Boolean = false,
+    val filePath: String? = null,
     val isSynced: Boolean = false,
     val isDeleted: Boolean = false
 )

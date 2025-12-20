@@ -19,7 +19,9 @@ interface IBooksRemoteRepository {
 
     suspend fun refreshBookDetails(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
 
-    suspend fun uploadBook(fileUri: Uri): TResult<Unit, ConnectionExceptionDomainModel> // Изменили возвращаемый тип на Unit, так как список обновится через Flow
+    suspend fun uploadBook(fileUri: Uri): TResult<Unit, ConnectionExceptionDomainModel>
+
+    suspend fun addLocalBook(fileUri: Uri): TResult<Unit, Exception>
 
     suspend fun deleteBook(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
 

@@ -8,6 +8,7 @@ import com.example.thematiclibraryclient.domain.model.books.AuthorDomainModel
 import com.example.thematiclibraryclient.domain.model.books.BookDomainModel
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
+import com.example.thematiclibraryclient.domain.usecase.books.AddLocalBookUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.GetBooksUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.RefreshBooksUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.UploadBookUseCase
@@ -50,6 +51,7 @@ data class LibraryUiState(
 class LibraryViewModel @Inject constructor(
     private val getBooksUseCase: GetBooksUseCase,
     private val uploadBookUseCase: UploadBookUseCase,
+    private val addLocalBookUseCase: AddLocalBookUseCase,
     private val refreshBooksUseCase: RefreshBooksUseCase,
     private val refreshShelvesUseCase: RefreshShelvesUseCase,
     private val getShelvesUseCase: GetShelvesUseCase,
@@ -144,25 +146,16 @@ class LibraryViewModel @Inject constructor(
 
     fun uploadBook(fileUri: Uri){
         viewModelScope.launch {
-
             _uiState.value = _uiState.value.copy(isUploading = true, error = null)
 
-            when(val result = uploadBookUseCase.invoke(fileUri)){
+            when(val result = addLocalBookUseCase(fileUri)){
                 is TResult.Success -> {
                     _uiState.value = _uiState.value.copy(isUploading = false)
-                    refreshBooks()
                 }
                 is TResult.Error -> {
-                    val errorMessage = when (result.exception) {
-                        is ConnectionExceptionDomainModel.NoInternet -> "Ошибка сети. Проверьте подключение."
-                        is ConnectionExceptionDomainModel.Unauthorized -> "Ошибка авторизации. Попробуйте войти заново."
-                        else -> "Произошла неизвестная ошибка."
-                    }
-                    _uiState.value = _uiState.value.copy(isUploading = false, error = errorMessage)
+                    _uiState.value = _uiState.value.copy(isUploading = false, error = "Ошибка добавления книги: ${result.exception?.message}")
                 }
-
             }
-
         }
     }
 

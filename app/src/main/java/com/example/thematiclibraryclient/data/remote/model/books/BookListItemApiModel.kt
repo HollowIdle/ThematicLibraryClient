@@ -29,18 +29,21 @@ fun BookListItemApiModel.toDomainModel() =
         id = id,
         title = title,
         description = description,
-        authors = authors?.map { it -> it.toDomainModel() } ?: emptyList(),
+        authors = authors.map { it -> it.toDomainModel() },
         tags = tags,
         shelfIds = shelfIds
     )
 
 fun BookListItemApiModel.toEntity() = BookEntity(
-    id = this.id,
+    id = 0,
+    serverId = this.id,
     title = this.title,
     description = this.description,
     authors = this.authors.map { it.toDomainModel() },
     tags = this.tags,
     shelfIds = this.shelfIds,
     lastPosition = 0,
-    isDetailsLoaded = false
+    isDetailsLoaded = false,
+    filePath = null,
+    isSynced = true
 )

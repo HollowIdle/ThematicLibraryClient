@@ -17,6 +17,9 @@ interface BooksDao {
     @Query("SELECT * FROM books WHERE id = :bookId AND isDeleted = 0")
     fun getBookById(bookId: Int): Flow<BookEntity?>
 
+    @Query("SELECT * FROM books WHERE shelfIds LIKE '%' || :shelfId || '%'")
+    suspend fun getBooksByShelfId(shelfId: Int): List<BookEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: BookEntity): Long
 

@@ -27,7 +27,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "thematic_library.db"
         )
-            .fallbackToDestructiveMigration(false)
+            .fallbackToDestructiveMigration(true)
             .build()
     }
 

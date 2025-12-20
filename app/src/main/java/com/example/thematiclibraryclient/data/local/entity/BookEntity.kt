@@ -8,15 +8,18 @@ import com.example.thematiclibraryclient.domain.model.books.BookDomainModel
 
 @Entity(tableName = "books")
 data class BookEntity(
-    @PrimaryKey(autoGenerate = false)
-    val id: Int,
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val serverId: Int? = null,
     val title: String,
     val description: String?,
     val authors: List<AuthorDomainModel>,
     val tags: List<String>,
     val shelfIds: List<Int>,
     val lastPosition: Int = 0,
-    val isDetailsLoaded: Boolean = false
+    val isDetailsLoaded: Boolean = false,
+    val isSynced: Boolean = false,
+    val isDeleted: Boolean = false
 )
 
 fun BookEntity.toDomainModel() = BookDomainModel(

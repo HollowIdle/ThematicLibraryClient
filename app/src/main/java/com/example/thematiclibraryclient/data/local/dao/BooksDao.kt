@@ -11,28 +11,35 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface BooksDao {
 
-    @Query("SELECT * FROM books")
+    @Query("SELECT * FROM books WHERE isDeleted = 0")
     fun getBooks(): Flow<List<BookEntity>>
 
-    @Query("SELECT * FROM books WHERE id = :bookId")
+    @Query("SELECT * FROM books WHERE id = :bookId AND isDeleted = 0")
     fun getBookById(bookId: Int): Flow<BookEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBook(book: BookEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBooks(books: List<BookEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBook(book: BookEntity)
+    @Query("UPDATE books SET isDeleted = 1, isSynced = 0 WHERE id = :bookId")
+    suspend fun markAsDeleted(bookId: Int)
 
     @Query("DELETE FROM books WHERE id = :bookId")
-    suspend fun deleteBook(bookId: Int)
+    suspend fun deleteBookPhysically(bookId: Int)
 
-    @Query("UPDATE books SET lastPosition = :position WHERE id = :bookId")
+    @Query("UPDATE books SET lastPosition = :position, isSynced = 0 WHERE id = :bookId")
     suspend fun updateProgress(bookId: Int, position: Int)
 
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookEntityById(bookId: Int): BookEntity?
 
-    // Book content
+    @Query("SELECT * FROM books WHERE serverId = :serverId LIMIT 1")
+    suspend fun getBookByServerId(serverId: Int): BookEntity?
+
+    @Query("SELECT * FROM books WHERE isSynced = 0")
+    suspend fun getUnsyncedBooks(): List<BookEntity>
 
     @Query("SELECT content FROM book_contents WHERE bookId = :bookId")
     suspend fun getBookContent(bookId: Int): String?

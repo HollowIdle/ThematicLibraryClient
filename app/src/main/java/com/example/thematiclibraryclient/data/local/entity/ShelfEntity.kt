@@ -6,9 +6,12 @@ import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
 
 @Entity(tableName = "shelves")
 data class ShelfEntity(
-    @PrimaryKey(autoGenerate = false)
-    val id: Int,
-    val name: String
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val serverId: Int? = null,
+    val name: String,
+    val isSynced: Boolean = false,
+    val isDeleted: Boolean = false
 )
 
 fun ShelfEntity.toDomainModel() = ShelfDomainModel(

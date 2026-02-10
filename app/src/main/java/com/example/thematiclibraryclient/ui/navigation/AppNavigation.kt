@@ -17,7 +17,8 @@ import com.example.thematiclibraryclient.ui.screens.ShelfBooksScreen
 fun AppNavigation(
     modifier: Modifier = Modifier,
     navController: NavHostController,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onSyncRequest: () -> Unit
 ) {
     NavHost(
         navController = navController,
@@ -31,7 +32,7 @@ fun AppNavigation(
             QuotesScreen(navController = navController)
         }
         composable(ScreenRoute.Profile.route){
-            ProfileScreen(onLogout = onLogout)
+            ProfileScreen(onLogout = onLogout, /*onSyncClick = onSyncRequest*/)
         }
         composable(
             route = ScreenRoute.Reader.route,
@@ -40,14 +41,21 @@ fun AppNavigation(
                 navArgument("position") {
                     type = NavType.IntType
                     defaultValue = -1
+                },
+                navArgument("isPage") {
+                    type = NavType.BoolType
+                    defaultValue = false
                 }
             )
         ) { backStackEntry ->
             val bookId = backStackEntry.arguments?.getInt("bookId") ?: 0
             val position = backStackEntry.arguments?.getInt("position") ?: -1
+            val isPage = backStackEntry.arguments?.getBoolean("isPage") ?: false
+
             ReaderScreen(
                 bookId = bookId,
                 initialPosition = position,
+                isPageNavigation = isPage,
                 navController = navController
             )
         }

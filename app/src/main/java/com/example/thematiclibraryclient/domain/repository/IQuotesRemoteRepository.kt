@@ -14,6 +14,8 @@ interface IQuotesRemoteRepository {
 
     fun getQuotesForBook(bookId: Int): Flow<List<QuoteDomainModel>>
 
+    suspend fun syncPendingChanges(): TResult<Unit, Exception>
+
     suspend fun refreshQuotes(): TResult<Unit, ConnectionExceptionDomainModel>
 
     suspend fun refreshGroupedQuotes(): TResult<Unit, ConnectionExceptionDomainModel>

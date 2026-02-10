@@ -26,7 +26,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    
+
     private val viewModel: MainViewModel by viewModels()
 
     @Inject
@@ -64,17 +64,19 @@ class MainActivity : ComponentActivity() {
                     is AuthState.Authenticated -> {
                         RootNavigation(
                             navController = navController,
-                            startDestination = ScreenRoute.MAIN_GRAPH_ROUTE
+                            startDestination = ScreenRoute.MAIN_GRAPH_ROUTE,
+                            onSyncRequest = { viewModel.startSync() }
                         )
                     }
                     is AuthState.Unauthenticated -> {
                         RootNavigation(
                             navController = navController,
-                            startDestination = ScreenRoute.AUTH_GRAPH_ROUTE
+                            startDestination = ScreenRoute.AUTH_GRAPH_ROUTE,
+                            onSyncRequest = { viewModel.startSync() }
                         )
                     }
                 }
-            
+
             }
         }
     }

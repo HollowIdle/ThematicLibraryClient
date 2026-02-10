@@ -88,7 +88,7 @@ fun ShelfBooksScreen(
             } else if (uiState.error != null) {
                 ErrorComponent(
                     errorMessage = uiState.error!!,
-                    onRetry = { viewModel.refreshBooks() } // Или refreshBooks()
+                    onRetry = { viewModel.refreshBooks() }
                 )
             } else if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
@@ -107,7 +107,7 @@ fun ShelfBooksScreen(
             currentFilter = uiState.filterState,
             availableAuthors = uiState.availableAuthors,
             availableTags = uiState.availableTags,
-            availableShelves = emptyList(), // Полки здесь не нужны
+            availableShelves = emptyList(),
             onApply = { newState -> viewModel.onFilterChanged(newState) },
             onClear = { viewModel.clearFilters() },
             onDismiss = { showFilterSheet = false }

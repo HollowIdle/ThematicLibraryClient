@@ -9,6 +9,8 @@ interface IBookmarksRemoteRepository {
 
     fun getBookmarks(bookId: Int): Flow<List<BookmarkDomainModel>>
 
+    suspend fun syncPendingChanges(): TResult<Unit, Exception>
+
     suspend fun refreshBookmarks(bookId: Int): TResult<Unit, ConnectionExceptionDomainModel>
 
     suspend fun createBookmark(bookId: Int, position: Int, note: String?): TResult<Unit, ConnectionExceptionDomainModel>

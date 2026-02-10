@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,14 @@ fun QuoteItem(
     quote: QuoteDomainModel,
     onClick: () -> Unit
 ) {
+
+    val displayTitle = remember(quote.bookTitle) {
+        quote.bookTitle
+            .replace(Regex("^\\d+_"), "")
+            .substringBeforeLast(".")
+    }
+
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick
@@ -48,9 +57,9 @@ fun QuoteItem(
         Column(Modifier.padding(12.dp)) {
             Text(text = "“${quote.selectedText}”")
             Spacer(Modifier.height(8.dp))
-            if (quote.bookTitle.isNotEmpty()) {
+            if (displayTitle.isNotEmpty()) {
                 Text(
-                    text = quote.bookTitle,
+                    text = displayTitle,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.align(Alignment.End)

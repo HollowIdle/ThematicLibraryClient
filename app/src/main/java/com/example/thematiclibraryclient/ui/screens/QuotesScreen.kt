@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -20,21 +19,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,13 +40,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
-import com.example.thematiclibraryclient.domain.model.books.BookmarkDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.BookGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
-import com.example.thematiclibraryclient.domain.model.quotes.QuoteGroupDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.ShelfGroupDomainModel
 import com.example.thematiclibraryclient.ui.common.AppSearchBar
 import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
@@ -117,21 +110,24 @@ fun QuotesScreen(
                         FlatQuotesList(
                             quotes = uiState.filteredFlatQuotes,
                             onQuoteClick = { quote -> viewModel.onQuoteSelected(quote) },
-                            emptyMessage = "Цитаты не найдены." // Это сообщение для поиска
+                            emptyMessage = "Цитаты не найдены."
                         )
                     }
                 }
             } else if (uiState.error != null) {
                 ErrorComponent(
                     errorMessage = uiState.error!!,
-                    onRetry = { viewModel.refreshQuotes() } // Используем refreshQuotes
+                    onRetry = { viewModel.refreshQuotes() }
                 )
             } else if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
                     Text(
-                        text = if (uiState.searchQuery.isNotEmpty()) "Ничего не найдено" else "У вас пока нет цитат",
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 5.dp),
+                        text = if (uiState.searchQuery.isNotEmpty()) "Ничего не найдено" else "У вас пока нет цитат или книги с цитатами пока не положены на полку",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
@@ -265,6 +261,13 @@ private fun ExpandableBookItem(
 ) {
     var isExpanded by rememberSaveable { mutableStateOf(false) }
 
+    val displayTitle = remember(book.bookTitle) {
+        book.bookTitle
+            .replace(Regex("^\\d+_"), "")
+            .substringBeforeLast(".")
+    }
+
+
     val rotationState by animateFloatAsState(
         targetValue = if (isExpanded) 180f else 0f,
         label = "ArrowRotation"
@@ -299,7 +302,7 @@ private fun ExpandableBookItem(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = book.bookTitle,
+                        text = displayTitle,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )

@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navigation
 import com.example.thematiclibraryclient.ui.screens.LoginScreen
 import com.example.thematiclibraryclient.ui.screens.MainScreen
@@ -13,17 +12,25 @@ import com.example.thematiclibraryclient.ui.screens.RegisterScreen
 @Composable
 fun RootNavigation(
     navController: NavHostController,
-    startDestination: String
+    startDestination: String,
+    onSyncRequest: () -> Unit
 ) {
     NavHost(navController = navController, startDestination = startDestination) {
         navigation(
             startDestination = ScreenRoute.Login.route,
             route = ScreenRoute.AUTH_GRAPH_ROUTE
         ) {
-            composable(ScreenRoute.Login.route) {
+            composable(ScreenRoute.Login.route) { backStackEntry ->
+                val registrationSuccess = backStackEntry.savedStateHandle
+                    .get<Boolean>("registration_success") ?: false
+
                 LoginScreen(
                     onRegisterClick = {
                         navController.navigate(ScreenRoute.Register.route)
+                    },
+                    showSuccessSnackbar = registrationSuccess,
+                    onSnackbarShown = {
+                        backStackEntry.savedStateHandle.remove<Boolean>("registration_success")
                     }
                 )
             }
@@ -31,6 +38,13 @@ fun RootNavigation(
             composable(ScreenRoute.Register.route) {
                 RegisterScreen(
                     onRegistrationSuccess = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("registration_success", true)
+
+                        navController.popBackStack()
+                    },
+                    onBackClick = {
                         navController.popBackStack()
                     }
                 )
@@ -45,7 +59,8 @@ fun RootNavigation(
                             inclusive = true
                         }
                     }
-                }
+                },
+                onSyncRequest = { onSyncRequest() }
             )
         }
     }

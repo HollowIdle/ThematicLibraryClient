@@ -6,4 +6,6 @@ import com.example.thematiclibraryclient.domain.model.quotes.NoteDomainModel
 
 interface INotesRemoteRepository {
     suspend fun upsertNote(quoteId: Int, content: String): TResult<NoteDomainModel, ConnectionExceptionDomainModel>
+
+    suspend fun syncPendingChanges(): TResult<Unit, Exception>
 }

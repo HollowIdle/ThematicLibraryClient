@@ -8,11 +8,11 @@ sealed class ScreenRoute(val route: String) {
     data object Library : ScreenRoute("library_screen")
     data object Quotes : ScreenRoute("quotes_screen")
 
-    data object Reader : ScreenRoute("reader_screen/{bookId}?position={position}") {
+    data object Reader : ScreenRoute("reader_screen/{bookId}?position={position}&isPage={isPage}") {
         fun createRoute(bookId: Int): String = "reader_screen/$bookId"
 
-        fun createRouteWithPosition(bookId: Int, position: Int): String =
-            "reader_screen/$bookId?position=$position"
+        fun createRouteWithPosition(bookId: Int, position: Int, isPage: Boolean = false): String =
+            "reader_screen/$bookId?position=$position&isPage=$isPage"
     }
 
     data object Profile : ScreenRoute("profile_screen")

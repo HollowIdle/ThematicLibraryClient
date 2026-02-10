@@ -1,6 +1,7 @@
 package com.example.thematiclibraryclient.di
 
 import android.content.Context
+import com.example.thematiclibraryclient.data.common.NetworkConnectivityObserver
 import com.example.thematiclibraryclient.data.common.SessionExpiredNotifier
 import com.example.thematiclibraryclient.data.local.dao.BookmarksDao
 import com.example.thematiclibraryclient.data.local.dao.BooksDao
@@ -8,6 +9,7 @@ import com.example.thematiclibraryclient.data.local.dao.QuotesDao
 import com.example.thematiclibraryclient.data.local.dao.ShelvesDao
 import com.example.thematiclibraryclient.data.local.dao.UserDao
 import com.example.thematiclibraryclient.data.local.source.ITokenLocalDataSource
+import com.example.thematiclibraryclient.data.local.source.PaginationCache
 import com.example.thematiclibraryclient.data.local.source.TokenLocalDataSourceImpl
 import com.example.thematiclibraryclient.data.remote.model.common.AuthInterceptor
 import com.example.thematiclibraryclient.data.remote.api.IAuthApi
@@ -25,6 +27,7 @@ import com.example.thematiclibraryclient.data.repository.QuotesRemoteRepositoryI
 import com.example.thematiclibraryclient.data.repository.ShelvesRemoteRepositoryImpl
 import com.example.thematiclibraryclient.data.repository.TokenRepositoryImpl
 import com.example.thematiclibraryclient.data.repository.UserRemoteRepositoryImpl
+import com.example.thematiclibraryclient.domain.common.LocalBookParser
 import com.example.thematiclibraryclient.domain.repository.IAuthRepository
 import com.example.thematiclibraryclient.domain.repository.IBookmarksRemoteRepository
 import com.example.thematiclibraryclient.domain.repository.IBooksRemoteRepository
@@ -57,6 +60,12 @@ object AppModule {
     @Singleton
     fun provideAuthInterceptor(tokenLocalDataSource: ITokenLocalDataSource, sessionExpiredNotifier: SessionExpiredNotifier) : AuthInterceptor {
         return AuthInterceptor(tokenLocalDataSource, sessionExpiredNotifier)
+    }
+
+    @Provides
+    @Singleton
+    fun providePaginationCache(@ApplicationContext context: Context): PaginationCache {
+        return PaginationCache(context)
     }
 
     @Provides
@@ -149,8 +158,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBooksRemoteRepository(@ApplicationContext context: Context , booksApi: IBooksApi, booksDao: BooksDao): IBooksRemoteRepository{
-        return BooksRemoteRepositoryImpl(booksApi, booksDao, context)
+    fun provideBooksRemoteRepository(@ApplicationContext context: Context , booksApi: IBooksApi, shelvesDao: ShelvesDao,  booksDao: BooksDao, localBookParser: LocalBookParser): IBooksRemoteRepository{
+        return BooksRemoteRepositoryImpl(booksApi, booksDao, shelvesDao, localBookParser, context)
     }
 
     @Provides
@@ -166,10 +175,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideBookmarksRemoteRepository(api: IBookmarksApi, bookmarksDao: BookmarksDao): IBookmarksRemoteRepository {
+    fun provideBookmarksRemoteRepository(api: IBookmarksApi, bookmarksDao: BookmarksDao, booksDao: BooksDao): IBookmarksRemoteRepository {
         return BookmarksRemoteRepositoryImpl(
             api,
-            bookmarksDao
+            bookmarksDao,
+            booksDao
         )
     }
 
@@ -190,12 +200,20 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideShelvesRemoteRepository(api: IShelvesApi, shelvesDao: ShelvesDao, booksDao: BooksDao): IShelvesRemoteRepository {
+    fun provideShelvesRemoteRepository(api: IShelvesApi, booksApi: IBooksApi, shelvesDao: ShelvesDao, booksDao: BooksDao): IShelvesRemoteRepository {
         return ShelvesRemoteRepositoryImpl(
             api,
             shelvesDao = shelvesDao,
-            booksDao = booksDao
+            booksDao = booksDao,
+            booksApi = booksApi
         )
+    }
+
+
+    @Provides
+    @Singleton
+    fun provideNetworkConnectivityObserver(@ApplicationContext context: Context): NetworkConnectivityObserver {
+        return NetworkConnectivityObserver(context)
     }
 
 }

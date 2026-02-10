@@ -1,12 +1,12 @@
 package com.example.thematiclibraryclient.ui.common
 
+import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableString
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
-import android.graphics.Typeface
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
@@ -19,13 +19,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.thematiclibraryclient.data.local.source.PaginationCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -34,8 +33,10 @@ import kotlin.math.min
 
 @Composable
 fun Paginator(
+    bookId: Int,
     fullText: AnnotatedString?,
     style: TextStyle,
+    paginationCache: PaginationCache,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     onPagesUpdated: (List<AnnotatedString>) -> Unit
 ) {
@@ -73,14 +74,18 @@ fun Paginator(
             }
         }
 
-        LaunchedEffect(fullText, contentWidth, contentHeight, style) {
+        LaunchedEffect(bookId, fullText, contentWidth, contentHeight, style) {
             if (fullText != null && fullText.isNotEmpty() && contentWidth > 0 && contentHeight > 0) {
-                paginateNative(
+                val cacheKey = "book_${bookId}_w${contentWidth}_h${contentHeight}_s${style.fontSize.value}"
+
+                paginateWithCache(
                     fullText = fullText,
                     textPaint = textPaint,
                     contentWidth = contentWidth,
                     contentHeight = contentHeight,
-                    lineHeightMultiplier = 1.2f
+                    lineHeightMultiplier = 1.2f,
+                    cacheKey = cacheKey,
+                    paginationCache = paginationCache
                 ).collect { updatedPages ->
                     onPagesUpdated(updatedPages)
                 }
@@ -89,14 +94,37 @@ fun Paginator(
     }
 }
 
-private fun paginateNative(
+private fun paginateWithCache(
     fullText: AnnotatedString,
     textPaint: TextPaint,
     contentWidth: Int,
     contentHeight: Int,
-    lineHeightMultiplier: Float
+    lineHeightMultiplier: Float,
+    cacheKey: String,
+    paginationCache: PaginationCache
 ): Flow<List<AnnotatedString>> = flow {
+
+    val cachedOffsets = paginationCache.getOffsets(cacheKey)
+
+    if (cachedOffsets != null && cachedOffsets.isNotEmpty()) {
+        val pages = mutableListOf<AnnotatedString>()
+        var currentOffset = 0
+
+        try {
+            for (endOffset in cachedOffsets) {
+                if (endOffset > fullText.length) break
+                val pageText = fullText.subSequence(currentOffset, endOffset)
+                pages.add(pageText)
+                currentOffset = endOffset
+            }
+            emit(pages)
+            return@flow
+        } catch (e: Exception) {
+        }
+    }
+
     val pages = mutableListOf<AnnotatedString>()
+    val offsets = mutableListOf<Int>()
     var currentOffset = 0
     val totalLength = fullText.length
 
@@ -128,15 +156,25 @@ private fun paginateNative(
             }
         }
 
-        val pageText = fullText.subSequence(currentOffset, currentOffset + cutOffsetInChunk)
+        if (cutOffsetInChunk == 0 && chunkSize > 0) {
+            cutOffsetInChunk = min(chunkSize, 100)
+        }
+
+        val pageEndOffset = currentOffset + cutOffsetInChunk
+        val pageText = fullText.subSequence(currentOffset, pageEndOffset)
+
         pages.add(pageText)
+        offsets.add(pageEndOffset)
 
         currentOffset += cutOffsetInChunk
 
-        if (pages.size % 10 == 0 || currentOffset >= totalLength) {
+        if (pages.size % 20 == 0 || currentOffset >= totalLength) {
             emit(pages.toList())
         }
     }
+
+    paginationCache.saveOffsets(cacheKey, offsets)
+
 }.flowOn(Dispatchers.Default)
 
 private fun toSpannable(annotatedString: AnnotatedString): SpannableString {

@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.MimeTypeMap
 import com.example.thematiclibraryclient.data.local.dao.BooksDao
+import com.example.thematiclibraryclient.data.local.dao.ShelvesDao
 import com.example.thematiclibraryclient.data.local.entity.BookEntity
 import com.example.thematiclibraryclient.data.local.entity.toDetailsDomainModel
 import com.example.thematiclibraryclient.data.local.entity.toDomainModel
@@ -28,6 +29,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import java.io.File
@@ -38,6 +42,7 @@ import javax.inject.Inject
 class BooksRemoteRepositoryImpl @Inject constructor(
     private val booksApi: IBooksApi,
     private val booksDao: BooksDao,
+    private val shelvesDao: ShelvesDao,
     private val localBookParser: LocalBookParser,
     @ApplicationContext private val context: Context
 ) : IBooksRemoteRepository {
@@ -51,32 +56,69 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         }
     }
 
+    private suspend fun mapServerShelfIdsToLocal(serverIds: List<Int>): List<Int> {
+        return serverIds.mapNotNull { serverId ->
+            shelvesDao.getShelfByServerId(serverId)?.id
+        }
+    }
+
     override suspend fun refreshBooks(): TResult<Unit, ConnectionExceptionDomainModel> {
         return try {
             val apiBooks = booksApi.getBooks()
 
-            val entities = apiBooks.map { apiBook ->
+            val booksToInsert = mutableListOf<BookEntity>()
+
+            for (apiBook in apiBooks) {
                 val existing = booksDao.getBookByServerId(apiBook.id)
 
-                BookEntity(
-                    id = existing?.id ?: 0,
-                    serverId = apiBook.id,
-                    title = apiBook.title,
-                    description = apiBook.description,
-                    authors = apiBook.authors.map { it.toDomainModel() },
-                    tags = apiBook.tags,
-                    shelfIds = apiBook.shelfIds,
-                    filePath = existing?.filePath,
-                    isSynced = true,
-                    isDetailsLoaded = false
-                )
+                val localShelfIds = mapServerShelfIdsToLocal(apiBook.shelfIds)
+
+                if (existing != null) {
+                    if (existing.isDeleted) {
+                        continue
+                    }
+
+                    if (!existing.isSynced) {
+                        continue
+                    }
+
+                    val updatedBook = existing.copy(
+                        title = apiBook.title,
+                        description = apiBook.description,
+                        authors = apiBook.authors.map { it.toDomainModel() },
+                        tags = apiBook.tags,
+                        shelfIds = localShelfIds,
+                        isSynced = true
+                    )
+                    booksDao.updateBook(updatedBook)
+                } else {
+                    val newBook = BookEntity(
+                        id = 0,
+                        serverId = apiBook.id,
+                        title = apiBook.title,
+                        description = apiBook.description,
+                        authors = apiBook.authors.map { it.toDomainModel() },
+                        tags = apiBook.tags,
+                        shelfIds = localShelfIds,
+                        filePath = null,
+                        isSynced = true,
+                        isDetailsLoaded = false,
+                        isDeleted = false
+                    )
+                    booksToInsert.add(newBook)
+                }
             }
-            booksDao.insertBooks(entities)
+
+            if (booksToInsert.isNotEmpty()) {
+                booksDao.insertBooks(booksToInsert)
+            }
+
             TResult.Success(Unit)
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())
         }
     }
+
 
     override fun getBookDetails(bookId: Int): Flow<BookDetailsDomainModel?> {
         return booksDao.getBookById(bookId).map { entity ->
@@ -91,47 +133,31 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         return try {
             val apiDetails = booksApi.getBookDetails(localBook.serverId)
 
+            val localShelfIds = mapServerShelfIdsToLocal(apiDetails.shelfIds)
+
             val updatedEntity = localBook.copy(
                 title = apiDetails.title,
                 description = apiDetails.description,
                 authors = apiDetails.authors.map { AuthorDomainModel(it) },
                 tags = apiDetails.tags,
-                shelfIds = apiDetails.shelfIds,
+                shelfIds = localShelfIds,
                 lastPosition = apiDetails.lastPosition ?: localBook.lastPosition,
                 isDetailsLoaded = true,
                 isSynced = true
             )
 
-            booksDao.insertBook(updatedEntity)
+            booksDao.updateBook(updatedEntity)
             TResult.Success(Unit)
         } catch (e: Throwable) {
             TResult.Error(e.toConnectionExceptionDomainModel())
         }
     }
 
-    /*override suspend fun getBookContent(bookId: Int): TResult<String, ConnectionExceptionDomainModel> {
-        val cachedContent = booksDao.getBookContent(bookId)
-        if (!cachedContent.isNullOrBlank()) {
-            return TResult.Success(cachedContent)
-        }
-
-        return try {
-            val responseBody = booksApi.getBookContent(bookId)
-            val contentString = responseBody.string()
-
-            booksDao.insertBookContent(BookContentEntity(bookId, contentString))
-
-            TResult.Success(contentString)
-        } catch (e: Throwable) {
-            TResult.Error(e.toConnectionExceptionDomainModel())
-        }
-    }*/
-
     override suspend fun downloadBookFile(bookId: Int, fileName: String): TResult<File, ConnectionExceptionDomainModel> {
         return withContext(Dispatchers.IO) {
             try {
                 val bookEntity = booksDao.getBookEntityById(bookId)
-                    ?: return@withContext TResult.Error(Exception("Book not found in DB").toConnectionExceptionDomainModel())
+                    ?: return@withContext TResult.Error(Exception("Book not found").toConnectionExceptionDomainModel())
 
                 val booksDir = File(context.filesDir, "books")
                 if (!booksDir.exists()) booksDir.mkdirs()
@@ -161,7 +187,7 @@ class BooksRemoteRepositoryImpl @Inject constructor(
                     }
 
                     val updatedBook = bookEntity.copy(filePath = finalFileName)
-                    booksDao.insertBook(updatedBook)
+                    booksDao.updateBook(updatedBook)
 
                     return@withContext TResult.Success(file)
                 } else {
@@ -252,7 +278,6 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         return "${bookId}_book.$extension"
     }
 
-    // Заглушка
     override suspend fun uploadBook(fileUri: Uri): TResult<Unit, ConnectionExceptionDomainModel> {
         return TResult.Success(Unit)
     }
@@ -261,11 +286,9 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         return try {
             val book = booksDao.getBookEntityById(bookId)
             if (book != null) {
-
                 book.filePath?.let { path ->
                     if (path.isNotEmpty()) {
-                        val file = File(context.filesDir, "books/$path")
-                        if (file.exists()) file.delete()
+                        File(context.filesDir, "books/$path").delete()
                     }
                 }
 
@@ -278,6 +301,7 @@ class BooksRemoteRepositoryImpl @Inject constructor(
                         booksApi.deleteBook(book.serverId)
                         booksDao.deleteBookPhysically(bookId)
                     } catch (e: Exception) {
+                        android.util.Log.w("SYNC_LOG", "Не удалось удалить на сервере сразу. Ошибка: ${e.message}")
                     }
                 }
             }
@@ -292,9 +316,18 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         booksDao.updateProgress(bookId, position)
 
         val book = booksDao.getBookEntityById(bookId)
+
         if (book?.serverId != null) {
             try {
                 booksApi.updateProgress(book.serverId, BookProgressRequestApiModel(position))
+
+                val updatedBook = booksDao.getBookEntityById(bookId)
+                if (updatedBook != null) {
+                    if (updatedBook.lastPosition == position) {
+                        booksDao.updateBook(updatedBook.copy(isSynced = true))
+                    }
+                }
+
             } catch (e: Exception) {
             }
         }
@@ -306,18 +339,15 @@ class BooksRemoteRepositoryImpl @Inject constructor(
             ?: return TResult.Error(Exception("Book not found").toConnectionExceptionDomainModel())
 
         val newAuthors = authors.map { AuthorDomainModel(it) }
-        val updatedBook = localBook.copy(
-            authors = newAuthors,
-            isSynced = false
-        )
-        booksDao.insertBook(updatedBook)
+        val updatedBook = localBook.copy(authors = newAuthors, isSynced = false)
+
+        booksDao.updateBook(updatedBook)
 
         if (localBook.serverId != null) {
             try {
                 booksApi.updateAuthors(localBook.serverId, StringListRequestApiModel(authors))
-                booksDao.insertBook(updatedBook.copy(isSynced = true))
-            } catch (e: Exception) {
-            }
+                booksDao.updateBook(updatedBook.copy(isSynced = true))
+            } catch (e: Exception) {}
         }
         return TResult.Success(Unit)
     }
@@ -326,18 +356,14 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         val localBook = booksDao.getBookEntityById(bookId)
             ?: return TResult.Error(Exception("Book not found").toConnectionExceptionDomainModel())
 
-        val updatedBook = localBook.copy(
-            tags = tags,
-            isSynced = false
-        )
-        booksDao.insertBook(updatedBook)
+        val updatedBook = localBook.copy(tags = tags, isSynced = false)
+        booksDao.updateBook(updatedBook)
 
         if (localBook.serverId != null) {
             try {
                 booksApi.updateTags(localBook.serverId, StringListRequestApiModel(tags))
-                booksDao.insertBook(updatedBook.copy(isSynced = true))
-            } catch (e: Exception) {
-            }
+                booksDao.updateBook(updatedBook.copy(isSynced = true))
+            } catch (e: Exception) {}
         }
         return TResult.Success(Unit)
     }
@@ -346,19 +372,96 @@ class BooksRemoteRepositoryImpl @Inject constructor(
         val localBook = booksDao.getBookEntityById(bookId)
             ?: return TResult.Error(Exception("Book not found").toConnectionExceptionDomainModel())
 
-        val updatedBook = localBook.copy(
-            description = description,
-            isSynced = false
-        )
-        booksDao.insertBook(updatedBook)
+        val updatedBook = localBook.copy(description = description, isSynced = false)
+        booksDao.updateBook(updatedBook)
 
         if (localBook.serverId != null) {
             try {
                 booksApi.updateDescription(localBook.serverId, UpdateDescriptionRequestApiModel(description))
-                booksDao.insertBook(updatedBook.copy(isSynced = true))
-            } catch (e: Exception) {
-            }
+                booksDao.updateBook(updatedBook.copy(isSynced = true))
+            } catch (e: Exception) {}
         }
         return TResult.Success(Unit)
     }
+
+    override suspend fun syncPendingChanges(): TResult<Unit, Exception> {
+        return try {
+
+            val deletedBooks = booksDao.getDeletedBooks()
+            deletedBooks.forEach { book ->
+                if (book.serverId != null) {
+                    try {
+                        booksApi.deleteBook(book.serverId)
+                    } catch (e: Exception) {
+                        if (e is retrofit2.HttpException && e.code() == 404) { } else { throw e }
+                    }
+                }
+                booksDao.deleteBookPhysically(book.id)
+                book.filePath?.let { path -> File(context.filesDir, "books/$path").delete() }
+            }
+
+            val unsyncedBooks = booksDao.getUnsyncedBooks()
+
+            for (book in unsyncedBooks) {
+                try {
+                    if (book.serverId == null || book.serverId == 0) {
+                        if (book.filePath != null) {
+                            val file = File(context.filesDir, "books/${book.filePath}")
+                            if (file.exists()) {
+                                val requestBody = file.readBytes().toRequestBody("application/octet-stream".toMediaTypeOrNull())
+
+                                val extension = file.extension
+
+                                val safeTitle = book.title.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                                val uploadFileName = "$safeTitle.$extension"
+
+                                val multipartBody = MultipartBody.Part.createFormData("file", uploadFileName, requestBody)
+
+                                val response = booksApi.uploadBook(multipartBody)
+
+                                val serverId = response.bookId
+                                booksDao.updateServerId(book.id, serverId)
+
+                                booksApi.updateAuthors(serverId, StringListRequestApiModel(book.authors.map { it.name }))
+                                booksApi.updateTags(serverId, StringListRequestApiModel(book.tags))
+                                if (book.description != null) {
+                                    booksApi.updateDescription(serverId, UpdateDescriptionRequestApiModel(book.description))
+                                }
+                                booksApi.updateProgress(serverId, BookProgressRequestApiModel(book.lastPosition))
+
+
+                                val shouldMarkSynced = book.shelfIds.isEmpty()
+
+                                val syncedBook = book.copy(serverId = serverId, isSynced = shouldMarkSynced)
+                                booksDao.updateBook(syncedBook)
+
+                                if (!shouldMarkSynced) {
+                                    android.util.Log.d("SYNC_LOG", "Книга ${book.title} оставлена isSynced=false, так как есть полки для синхронизации")
+                                }
+
+                            }
+                        }
+                    } else {
+                        booksApi.updateAuthors(book.serverId, StringListRequestApiModel(book.authors.map { it.name }))
+                        booksApi.updateTags(book.serverId, StringListRequestApiModel(book.tags))
+                        if (book.description != null) {
+                            booksApi.updateDescription(book.serverId, UpdateDescriptionRequestApiModel(book.description))
+                        }
+                        booksApi.updateProgress(book.serverId, BookProgressRequestApiModel(book.lastPosition))
+
+                        val shouldMarkSynced = book.shelfIds.isEmpty()
+                        booksDao.updateBook(book.copy(isSynced = shouldMarkSynced))
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SYNC_LOG", "Ошибка синхронизации книги ${book.title}", e)
+                }
+            }
+
+            TResult.Success(Unit)
+        } catch (e: Exception) {
+            android.util.Log.e("SYNC_LOG", "BooksRepo: Критическая ошибка syncPendingChanges", e)
+            TResult.Error(e)
+        }
+    }
+
 }

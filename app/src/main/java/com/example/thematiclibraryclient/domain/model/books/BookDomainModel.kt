@@ -6,5 +6,7 @@ data class BookDomainModel(
     val description: String?,
     val authors: List<AuthorDomainModel>,
     val tags: List<String> = emptyList(),
-    val shelfIds: List<Int> = emptyList()
+    val shelfIds: List<Int> = emptyList(),
+    val isSynced: Boolean = true,
+    val fileExtension: String? = null
 )

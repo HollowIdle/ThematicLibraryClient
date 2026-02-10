@@ -23,21 +23,52 @@ data class BookEntity(
     val isDeleted: Boolean = false
 )
 
-fun BookEntity.toDomainModel() = BookDomainModel(
-    id = id,
-    title = title,
-    description = description,
-    authors = authors,
-    tags = tags,
-    shelfIds = shelfIds
-)
+fun BookEntity.toDomainModel(): BookDomainModel {
+    var extension: String? = null
 
-fun BookEntity.toDetailsDomainModel() = BookDetailsDomainModel(
-    id = id,
-    title = title,
-    description = description,
-    authors = authors.map { it.name },
-    tags = tags,
-    shelfIds = shelfIds,
-    lastPosition = lastPosition
-)
+    extension = if(this.filePath != null){
+        this.filePath
+            .substringAfterLast('.', "")
+            .uppercase()
+            .takeIf { it.isNotEmpty() && it.length <= 4 }
+
+
+    } else {
+        this.title
+            .substringAfterLast('.', "")
+            .uppercase()
+            .takeIf { it.isNotEmpty() && it.length <= 4 }
+    }
+
+
+    return BookDomainModel(
+        id = id,
+        title = title,
+        description = description,
+        authors = authors,
+        tags = tags,
+        shelfIds = shelfIds,
+        isSynced = isSynced,
+        fileExtension = extension
+    )
+}
+
+fun BookEntity.toDetailsDomainModel(): BookDetailsDomainModel {
+
+    val extension = this.filePath
+        ?.substringAfterLast('.', "")
+        ?.uppercase()
+        ?.takeIf { it.isNotEmpty() && it.length <= 4 }
+
+    return BookDetailsDomainModel(
+        id = id,
+        title = title,
+        description = description,
+        authors = authors.map { it.name },
+        tags = tags,
+        shelfIds = shelfIds,
+        lastPosition = lastPosition,
+        fileExtension = extension
+    )
+
+}

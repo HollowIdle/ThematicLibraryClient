@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.thematiclibraryclient.data.local.entity.BookContentEntity
 import com.example.thematiclibraryclient.data.local.entity.BookEntity
 import kotlinx.coroutines.flow.Flow
@@ -17,8 +18,14 @@ interface BooksDao {
     @Query("SELECT * FROM books WHERE id = :bookId AND isDeleted = 0")
     fun getBookById(bookId: Int): Flow<BookEntity?>
 
-    @Query("SELECT * FROM books WHERE shelfIds LIKE '%' || :shelfId || '%'")
-    suspend fun getBooksByShelfId(shelfId: Int): List<BookEntity>
+    @Query("SELECT * FROM books WHERE isDeleted = 1")
+    suspend fun getDeletedBooks(): List<BookEntity>
+
+    @Update
+    suspend fun updateBook(book: BookEntity)
+
+    @Query("UPDATE books SET serverId = :serverId WHERE id = :localId")
+    suspend fun updateServerId(localId: Int, serverId: Int)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBook(book: BookEntity): Long
@@ -44,11 +51,20 @@ interface BooksDao {
     @Query("SELECT * FROM books WHERE isSynced = 0")
     suspend fun getUnsyncedBooks(): List<BookEntity>
 
+    @Query("SELECT * FROM books WHERE shelfIds LIKE '%' || :shelfId || '%'")
+    suspend fun getBooksByShelfId(shelfId: Int): List<BookEntity>
+
     @Query("SELECT content FROM book_contents WHERE bookId = :bookId")
     suspend fun getBookContent(bookId: Int): String?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBookContent(contentEntity: BookContentEntity)
+
+    @Query("DELETE FROM books")
+    suspend fun deleteAllBooks()
+
+    @Query("DELETE FROM book_contents")
+    suspend fun deleteAllBookContents()
 
     @Query("DELETE FROM book_contents WHERE bookId = :bookId")
     suspend fun deleteBookContent(bookId: Int)

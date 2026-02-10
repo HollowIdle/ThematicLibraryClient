@@ -39,5 +39,7 @@ interface IBooksRemoteRepository {
 
     suspend fun updateProgress(bookId: Int, position: Int): TResult<Unit, ConnectionExceptionDomainModel>
 
+    suspend fun syncPendingChanges(): TResult<Unit, Exception>
+
     val booksUpdateFlow: Flow<Unit>
 }

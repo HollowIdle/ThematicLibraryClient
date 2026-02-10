@@ -12,6 +12,8 @@ interface IShelvesRemoteRepository {
 
     fun getBooksOnShelf(shelfId: Int): Flow<List<BookDomainModel>>
 
+    suspend fun syncPendingChanges(): TResult<Unit, Exception>
+
     suspend fun refreshShelves(): TResult<Unit, ConnectionExceptionDomainModel>
 
     suspend fun refreshBooksOnShelf(shelfId: Int): TResult<Unit, ConnectionExceptionDomainModel>

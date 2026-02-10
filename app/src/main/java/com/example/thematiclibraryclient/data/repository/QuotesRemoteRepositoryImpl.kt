@@ -182,4 +182,37 @@ class QuotesRemoteRepositoryImpl @Inject constructor(
             TResult.Error(e.toConnectionExceptionDomainModel())
         }
     }
+
+    override suspend fun syncPendingChanges(): TResult<Unit, Exception> {
+        return try {
+            val deletedQuotes = quotesDao.getDeletedQuotes()
+            deletedQuotes.forEach { quote ->
+                if (quote.serverId != null) {
+                    try { quotesApi.deleteQuote(quote.serverId) } catch (e: Exception) {}
+                }
+                quotesDao.deleteQuotePhysically(quote.id)
+            }
+
+            val unsyncedQuotes = quotesDao.getUnsyncedQuotes()
+            for (quote in unsyncedQuotes) {
+                val book = booksDao.getBookEntityById(quote.bookId)
+                if (book?.serverId == null) continue
+
+                if (quote.serverId == null) {
+                    val request = CreateQuoteRequestApiModel(
+                        selectedText = quote.selectedText,
+                        positionStart = quote.positionStart,
+                        positionEnd = quote.positionEnd,
+                        note = quote.noteContent,
+                        locatorData = quote.locatorData
+                    )
+                    val response = quotesApi.createQuote(book.serverId, request)
+                    quotesDao.insertQuote(quote.copy(serverId = response.id, isSynced = true))
+                }
+            }
+            TResult.Success(Unit)
+        } catch (e: Exception) {
+            TResult.Error(e)
+        }
+    }
 }

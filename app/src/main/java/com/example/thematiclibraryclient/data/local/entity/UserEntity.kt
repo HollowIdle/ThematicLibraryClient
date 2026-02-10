@@ -6,8 +6,8 @@ import com.example.thematiclibraryclient.domain.model.user.UserDomainModel
 
 @Entity(tableName = "user")
 data class UserEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Int = 0,
+    @PrimaryKey(autoGenerate = false)
+    val id: Int = -1,
     val serverId: Int? = null,
     val username: String,
     val email: String

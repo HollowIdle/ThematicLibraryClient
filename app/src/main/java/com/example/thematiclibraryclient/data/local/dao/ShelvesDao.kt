@@ -16,6 +16,9 @@ interface ShelvesDao {
     @Query("SELECT * FROM shelves WHERE id = :shelfId")
     suspend fun getShelfEntityById(shelfId: Int): ShelfEntity?
 
+    @Query("SELECT * FROM shelves WHERE isDeleted = 1")
+    suspend fun getDeletedShelves(): List<ShelfEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertShelf(shelf: ShelfEntity): Long
 

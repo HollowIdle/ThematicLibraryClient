@@ -19,7 +19,8 @@ import com.example.thematiclibraryclient.ui.navigation.BottomNavItem
 
 @Composable
 fun MainScreen(
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onSyncRequest: () -> Unit
 ) {
     val navController = rememberNavController()
 
@@ -29,7 +30,8 @@ fun MainScreen(
         AppNavigation(
             modifier = Modifier.padding(innerPadding),
             navController = navController,
-            onLogout = onLogout
+            onLogout = onLogout,
+            onSyncRequest = onSyncRequest
         )
     }
 }

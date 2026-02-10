@@ -19,6 +19,9 @@ interface QuotesDao {
     @Query("SELECT * FROM quotes WHERE bookId = :bookId AND isDeleted = 0 ORDER BY positionStart ASC")
     fun getQuotesForBook(bookId: Int): Flow<List<QuoteEntity>>
 
+    @Query("SELECT * FROM quotes WHERE isDeleted = 1")
+    suspend fun getDeletedQuotes(): List<QuoteEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQuote(quote: QuoteEntity): Long
 
@@ -42,4 +45,7 @@ interface QuotesDao {
 
     @Query("SELECT * FROM quotes WHERE isSynced = 0")
     suspend fun getUnsyncedQuotes(): List<QuoteEntity>
+
+    @Query("DELETE FROM quotes")
+    suspend fun deleteAllQuotes()
 }

@@ -38,7 +38,6 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,10 +75,10 @@ fun LibraryScreen(
     var shelfToDelete by remember { mutableStateOf<ShelfDomainModel?>(null) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            viewModel.uploadBook(it)
+            viewModel.checkAndUploadBook(it, context)
         }
     }
 
@@ -88,7 +87,7 @@ fun LibraryScreen(
             LibraryTopBar(
                 uiState = uiState,
                 onSearchQueryChanged = viewModel::onSearchQueryChanged,
-                onShelfSearchQueryChanged = viewModel::onShelfSearchQueryChanged, // <-- Передаем метод
+                onShelfSearchQueryChanged = viewModel::onShelfSearchQueryChanged,
                 onFilterClick = { showFilterSheet = true },
                 onScopeChange = viewModel::onSearchScopeChanged,
                 navController = navController
@@ -98,8 +97,19 @@ fun LibraryScreen(
             if(uiState.viewMode == LibraryViewMode.ALL_BOOKS){
                 ExtendedFloatingActionButton(
                     onClick = {
+                        val mimeTypes = arrayOf(
+                            "application/pdf",
+                            "application/epub+zip",
+                            "text/plain",
+                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "application/x-fictionbook+xml",
+                            "application/xml",
+                            "text/xml",
+                            "application/octet-stream"
+                        )
+
                         try {
-                            filePickerLauncher.launch("*/*")
+                            filePickerLauncher.launch(mimeTypes)
                         } catch (e: ActivityNotFoundException) {
                             Toast.makeText(context, "Не найдено приложение", Toast.LENGTH_SHORT).show()
                         }
@@ -121,6 +131,10 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (uiState.isUploading) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+
             LibraryTabs(
                 currentMode = uiState.viewMode,
                 onModeSelected = { newMode -> viewModel.setViewMode(newMode) }
@@ -172,6 +186,18 @@ fun LibraryScreen(
             }
         }
     }
+
+    if (uiState.duplicateBookUri != null) {
+        ConfirmationDialog(
+            title = "Книга уже существует",
+            text = "Книга с таким названием уже есть в библиотеке. Добавить копию?",
+            confirmButtonText = "Добавить",
+            dismissButtonText = "Отмена",
+            onConfirm = { viewModel.confirmUploadDuplicate() },
+            onDismiss = { viewModel.cancelUploadDuplicate() }
+        )
+    }
+
     if (showFilterSheet) {
         LibraryFilterSheet(
             currentFilter = uiState.filterState,
@@ -358,7 +384,8 @@ private fun EditShelfDialog(
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Название полки") }
+                label = { Text("Название полки") },
+                singleLine = true
             )
         },
         confirmButton = {

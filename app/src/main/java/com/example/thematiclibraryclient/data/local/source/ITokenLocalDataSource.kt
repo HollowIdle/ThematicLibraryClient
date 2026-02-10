@@ -10,4 +10,7 @@ interface ITokenLocalDataSource {
 
     suspend fun clearToken()
 
+    fun isOfflineMode(): Flow<Boolean>
+    suspend fun setOfflineMode(isOffline: Boolean)
+
 }

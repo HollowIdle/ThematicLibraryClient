@@ -91,14 +91,19 @@ dependencies {
     // Pagination
     implementation(libs.androidx.compose.foundation)
 
-    //Room
+    // Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     kapt(libs.androidx.room.compiler)
 
-    //PDF/DOCX/EPUB
+    // PDF/DOCX/EPUB
     implementation(libs.jsoup)
     implementation(libs.mammoth)
     implementation(libs.xercesimpl)
     implementation(libs.html.to.pdf.convertor)
+
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    kapt(libs.androidx.hilt.compiler)
 }

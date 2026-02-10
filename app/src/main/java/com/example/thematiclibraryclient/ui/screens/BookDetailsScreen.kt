@@ -2,21 +2,74 @@ package com.example.thematiclibraryclient.ui.screens
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
@@ -24,11 +77,14 @@ import com.example.thematiclibraryclient.domain.model.books.BookDetailsDomainMod
 import com.example.thematiclibraryclient.domain.model.books.BookmarkDomainModel
 import com.example.thematiclibraryclient.domain.model.quotes.QuoteDomainModel
 import com.example.thematiclibraryclient.domain.model.shelves.ShelfDomainModel
+import com.example.thematiclibraryclient.ui.common.AppSearchBar
 import com.example.thematiclibraryclient.ui.common.ConfirmationDialog
 import com.example.thematiclibraryclient.ui.common.ErrorComponent
+import com.example.thematiclibraryclient.ui.common.FileExtensionBadge
 import com.example.thematiclibraryclient.ui.common.FlatQuotesList
 import com.example.thematiclibraryclient.ui.common.ManageItemsDialog
 import com.example.thematiclibraryclient.ui.common.QuoteActionsDialog
+import com.example.thematiclibraryclient.ui.common.SearchScope
 import com.example.thematiclibraryclient.ui.navigation.ScreenRoute
 import com.example.thematiclibraryclient.ui.viewmodel.BookDetailsViewModel
 
@@ -49,12 +105,20 @@ fun BookDetailsScreen(
     var quoteToDelete by remember { mutableStateOf<QuoteDomainModel?>(null) }
     var showDeleteBookDialog by remember { mutableStateOf(false) }
 
+    var bookmarkToEdit by remember { mutableStateOf<BookmarkDomainModel?>(null) }
+
+    var bookmarkToDelete by remember { mutableStateOf<BookmarkDomainModel?>(null) }
+
+    val displayTitle = remember(uiState.bookDetails?.title) {
+        uiState.bookDetails?.title
+            ?.replace(Regex("^\\d+_"), "")
+            ?.substringBeforeLast(".")
+    }
+
     LaunchedEffect(key1 = true) {
         viewModel.eventFlow.collect { event ->
             when (event) {
-                is BookDetailsViewModel.UiEvent.NavigateBack -> {
-                    navController.popBackStack()
-                }
+                is BookDetailsViewModel.UiEvent.NavigateBack -> navController.popBackStack()
                 else -> {}
             }
         }
@@ -63,7 +127,7 @@ fun BookDetailsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.bookDetails?.title ?: "Детали книги", maxLines = 1) },
+                title = { Text(displayTitle ?: "Детали книги", maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
@@ -76,7 +140,6 @@ fun BookDetailsScreen(
                 }
             )
         },
-
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -101,13 +164,34 @@ fun BookDetailsScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
+                    item {
+                        val (currentScope, placeholder) = when (viewModel.selectedTabIndex) {
+                            0 -> SearchScope.Shelf to "Поиск полки..."
+                            1 -> SearchScope.Quote to "Поиск цитаты..."
+                            2 -> SearchScope.Everywhere to "Поиск в заметках..."
+                            else -> SearchScope.Everywhere to "Поиск..."
+                        }
+
+                        AppSearchBar(
+                            query = uiState.searchQuery,
+                            onQueryChange = viewModel::onSearchQueryChanged,
+                            currentScope = currentScope,
+                            availableScopes = listOf(currentScope),
+                            onScopeChange = {},
+                            onFilterClick = {},
+                            isFilterActive = false,
+                            showFilterButton = false,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+
                     stickyHeader {
                         Surface(
                             modifier = Modifier.fillParentMaxWidth(),
                             color = MaterialTheme.colorScheme.background
                         ) {
                             BookDetailsTabsHeader(
-                                selectedTabIndex = viewModel.selectedTabIndex, // Нужно добавить в VM
+                                selectedTabIndex = viewModel.selectedTabIndex,
                                 onTabSelected = { viewModel.onTabSelected(it) }
                             )
                         }
@@ -118,12 +202,13 @@ fun BookDetailsScreen(
                             BookDetailsPager(
                                 selectedTabIndex = viewModel.selectedTabIndex,
                                 onTabSelected = { viewModel.onTabSelected(it) },
-                                allShelves = uiState.allShelves,
+                                allShelves = uiState.filteredShelves,
                                 bookDetails = uiState.bookDetails!!,
-                                quotes = uiState.quotes,
-                                bookmarks = uiState.bookmarks,
+                                quotes = uiState.filteredQuotes,
+                                bookmarks = uiState.filteredBookmarks,
                                 onShelfMembershipChanged = { id, b -> viewModel.onShelfMembershipChanged(id, b) },
-                                onQuoteClick = { q -> viewModel.onQuoteSelected(q) }
+                                onQuoteClick = { q -> viewModel.onQuoteSelected(q) },
+                                onBookmarkClick = { bm -> bookmarkToEdit = bm }
                             )
                         }
                     }
@@ -142,14 +227,16 @@ fun BookDetailsScreen(
                         )
                     }
                     EditDialogType.TAGS -> {
-                        ManageItemsDialog(
-                            title = "Управление тегами",
-                            initialItems = uiState.bookDetails!!.tags,
+                        AdvancedTagManagerDialog(
+                            currentBookTags = uiState.bookDetails!!.tags,
+                            allAvailableTags = uiState.availableTags,
                             onDismiss = { activeDialog = EditDialogType.NONE },
-                            onSave = { newTags ->
+                            onSaveBookTags = { newTags ->
                                 viewModel.updateTags(newTags)
                                 activeDialog = EditDialogType.NONE
-                            }
+                            },
+                            onGlobalDelete = { tag -> viewModel.deleteTagGlobally(tag) },
+                            onGlobalRename = { old, new -> viewModel.renameTagGlobally(old, new) }
                         )
                     }
                     EditDialogType.DESCRIPTION -> {
@@ -173,8 +260,19 @@ fun BookDetailsScreen(
             } else if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
-
         }
+    }
+
+    if (bookmarkToDelete != null) {
+        ConfirmationDialog(
+            title = "Удаление закладки",
+            text = "Вы уверены, что хотите удалить эту закладку?",
+            onConfirm = {
+                viewModel.deleteBookmark(bookmarkToDelete!!)
+                bookmarkToDelete = null
+            },
+            onDismiss = { bookmarkToDelete = null }
+        )
     }
 
     if (showDeleteBookDialog) {
@@ -197,7 +295,7 @@ fun BookDetailsScreen(
                 quoteToDelete = uiState.selectedQuote
                 viewModel.onDialogDismiss()
             },
-            onSaveNote = { note -> viewModel.saveNoteForSelectedQuote(note) },
+            onSaveNote = { note -> viewModel.saveNoteForSelectedQuote(note.trim()) },
             onGoToSource = { quote ->
                 navController.navigate(
                     ScreenRoute.Reader.createRouteWithPosition(quote.bookId, quote.positionStart)
@@ -218,6 +316,322 @@ fun BookDetailsScreen(
             onDismiss = { quoteToDelete = null }
         )
     }
+
+    if (bookmarkToEdit != null) {
+        BookmarkActionsDialog(
+            bookmark = bookmarkToEdit!!,
+            onDismiss = { bookmarkToEdit = null },
+            onDelete = {
+                bookmarkToDelete = bookmarkToEdit
+                bookmarkToEdit = null
+            },
+            onSaveNote = { note ->
+                viewModel.updateBookmarkNote(bookmarkToEdit!!, note.trim())
+                bookmarkToEdit = null
+            },
+            onGoTo = {
+                navController.navigate(
+                    ScreenRoute.Reader.createRouteWithPosition(
+                        bookId,
+                        bookmarkToEdit!!.position,
+                        isPage = true
+                    )
+                )
+                bookmarkToEdit = null
+            }
+        )
+    }
+}
+
+@Composable
+fun BookmarkActionsDialog(
+    bookmark: BookmarkDomainModel,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+    onSaveNote: (String) -> Unit,
+    onGoTo: () -> Unit
+) {
+    var note by remember { mutableStateOf(bookmark.note ?: "") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Закладка (стр. ${bookmark.position + 1})") },
+        text = {
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Заметка") },
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onDelete, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Text("Удалить")
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onSaveNote(note) }) {
+                    Text("Сохранить")
+                }
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onGoTo) { Text("Перейти") }
+                TextButton(onClick = onDismiss) { Text("Отмена") }
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun AdvancedTagManagerDialog(
+    currentBookTags: List<String>,
+    allAvailableTags: List<String>,
+    onDismiss: () -> Unit,
+    onSaveBookTags: (List<String>) -> Unit,
+    onGlobalDelete: (String) -> Unit,
+    onGlobalRename: (String, String) -> Unit
+) {
+    var selectedTags by remember { mutableStateOf(currentBookTags.toSet()) }
+
+    var searchQuery by remember { mutableStateOf("") }
+
+    var tagToRename by remember { mutableStateOf<String?>(null) }
+    var tagToDelete by remember { mutableStateOf<String?>(null) }
+
+    var isSelectedTagsExpanded by remember { mutableStateOf(false) }
+    val visibleTagsLimit = 3
+
+    val filteredTags = remember(allAvailableTags, searchQuery) {
+        if (searchQuery.isBlank()) allAvailableTags
+        else allAvailableTags.filter { it.contains(searchQuery, ignoreCase = true) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Управление тегами") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 600.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Поиск или новый тег") },
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank() && searchQuery !in allAvailableTags) {
+                            IconButton(onClick = {
+                                selectedTags = selectedTags + searchQuery.trim()
+                                searchQuery = ""
+                            }) {
+                                Icon(Icons.Default.Add, contentDescription = "Создать")
+                            }
+                        } else if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Очистить")
+                            }
+                        }
+                    },
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (selectedTags.isNotEmpty()) {
+                    Text(
+                        "Выбрано для этой книги:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    val sortedSelected = remember(selectedTags) { selectedTags.sorted() }
+                    val showExpandButton = sortedSelected.size > visibleTagsLimit
+
+                    val visibleTags = if (isSelectedTagsExpanded || !showExpandButton) {
+                        sortedSelected
+                    } else {
+                        sortedSelected.take(visibleTagsLimit)
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .padding(vertical = 8.dp)
+                            .fillMaxWidth()
+                            .animateContentSize()
+                    ) {
+                        visibleTags.forEach { tag ->
+                            InputChip(
+                                selected = true,
+                                onClick = { selectedTags = selectedTags - tag },
+                                label = { Text(tag) },
+                                trailingIcon = { Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp)) }
+                            )
+                        }
+
+                        if (showExpandButton) {
+                            SuggestionChip(
+                                onClick = { isSelectedTagsExpanded = !isSelectedTagsExpanded },
+                                label = {
+                                    Text(if (isSelectedTagsExpanded) "Свернуть" else "Ещё ${sortedSelected.size - visibleTagsLimit}")
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = if (isSelectedTagsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                }
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(filteredTags) { tag ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedTags = if (tag in selectedTags) selectedTags - tag else selectedTags + tag
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = tag in selectedTags,
+                                onCheckedChange = { isChecked ->
+                                    selectedTags = if (isChecked) selectedTags + tag else selectedTags - tag
+                                }
+                            )
+
+                            Text(
+                                text = tag,
+                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+
+                            IconButton(onClick = { tagToRename = tag }) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Переименовать",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            IconButton(onClick = { tagToDelete = tag }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Удалить везде",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+
+                    if (filteredTags.isEmpty() && searchQuery.isNotBlank()) {
+                        item {
+                            Text(
+                                "Тег не найден. Нажмите +, чтобы создать.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(16.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSaveBookTags(selectedTags.toList()) }) {
+                Text("Сохранить изменения")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена")
+            }
+        }
+    )
+
+    if (tagToDelete != null) {
+        ConfirmationDialog(
+            title = "Удалить тег?",
+            text = "Тег \"$tagToDelete\" будет удален из ВСЕХ книг в библиотеке. Это действие нельзя отменить.",
+            confirmButtonText = "Удалить везде",
+            onConfirm = {
+                onGlobalDelete(tagToDelete!!)
+                selectedTags = selectedTags - tagToDelete!!
+                tagToDelete = null
+            },
+            onDismiss = { tagToDelete = null }
+        )
+    }
+
+    if (tagToRename != null) {
+        RenameTagDialog(
+            oldName = tagToRename!!,
+            onDismiss = { tagToRename = null },
+            onConfirm = { newName ->
+                onGlobalRename(tagToRename!!, newName)
+                if (tagToRename!! in selectedTags) {
+                    selectedTags = (selectedTags - tagToRename!!) + newName
+                }
+                tagToRename = null
+            }
+        )
+    }
+}
+
+@Composable
+fun RenameTagDialog(
+    oldName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var text by remember { mutableStateOf(oldName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Переименовать тег") },
+        text = {
+            Column {
+                Text("Это изменит тег во всех книгах библиотеки.")
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(text.trim()) },
+                enabled = text.isNotBlank() && text != oldName
+            ) {
+                Text("Переименовать")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена") }
+        }
+    )
 }
 
 @Composable
@@ -248,7 +662,8 @@ fun BookDetailsPager(
     quotes: List<QuoteDomainModel>,
     bookmarks: List<BookmarkDomainModel>,
     onShelfMembershipChanged: (Int, Boolean) -> Unit,
-    onQuoteClick: (QuoteDomainModel) -> Unit
+    onQuoteClick: (QuoteDomainModel) -> Unit,
+    onBookmarkClick: (BookmarkDomainModel) -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { 3 })
 
@@ -273,7 +688,7 @@ fun BookDetailsPager(
                 onCheckedChange = onShelfMembershipChanged
             )
             1 -> QuotesContent(quotes = quotes, onQuoteClick = onQuoteClick)
-            2 -> BookmarksContent(bookmarks = bookmarks)
+            2 -> BookmarksContent(bookmarks = bookmarks, onBookmarkClick = onBookmarkClick)
         }
     }
 }
@@ -286,7 +701,18 @@ private fun BookDetailsContent(
     onEditDescription: () -> Unit,
     onReadClick: () -> Unit
 ) {
+
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+
+        if (details.fileExtension != null) {
+            InfoRow(
+                icon = Icons.AutoMirrored.Filled.InsertDriveFile,
+                title = "Формат файла"
+            ) {
+                FileExtensionBadge(extension = details.fileExtension)
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+        }
 
         InfoRowWithEdit(
             icon = Icons.Default.Person,
@@ -294,14 +720,53 @@ private fun BookDetailsContent(
             content = details.authors.joinToString().ifEmpty { "Не указаны" },
             onEditClick = onEditAuthors
         )
+
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-        InfoRowWithEdit(
-            icon = Icons.Default.Description,
-            title = "Описание",
-            content = details.description.takeIf { !it.isNullOrBlank() } ?: "Отсутствует",
-            onEditClick = onEditDescription
-        )
+        var isDescriptionExpanded by remember { mutableStateOf(false) }
+        val descriptionText = details.description.takeIf { !it.isNullOrBlank() } ?: "Отсутствует"
+        val charLimit = 150
+        val shouldShowExpand = descriptionText.length > charLimit
+
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                imageVector = Icons.Default.Description,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Описание",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Text(
+                    text = if (shouldShowExpand && !isDescriptionExpanded) {
+                        descriptionText.take(charLimit) + "..."
+                    } else {
+                        descriptionText
+                    },
+                    style = MaterialTheme.typography.bodyLarge
+                )
+
+                if (shouldShowExpand) {
+                    Text(
+                        text = if (isDescriptionExpanded) "Свернуть" else "Читать далее",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .clickable { isDescriptionExpanded = !isDescriptionExpanded }
+                            .padding(vertical = 4.dp)
+                    )
+                }
+            }
+            IconButton(onClick = onEditDescription) {
+                Icon(Icons.Default.Edit, contentDescription = "Редактировать описание")
+            }
+        }
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
@@ -333,9 +798,7 @@ private fun ShelvesContent(
     onCheckedChange: (shelfId: Int, isChecked: Boolean) -> Unit
 ) {
     if (allShelves.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-            Text("У вас еще нет полок. Создайте их в разделе 'Управление полками'.")
-        }
+        EmptyTabMessage("У вас еще нет полок (или ни одна не соответствует поиску).")
         return
     }
 
@@ -357,23 +820,44 @@ private fun ShelvesContent(
 }
 
 @Composable
+private fun EmptyTabMessage(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 48.dp, start = 16.dp, end = 16.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 private fun QuotesContent(
     quotes: List<QuoteDomainModel>,
     onQuoteClick: (QuoteDomainModel) -> Unit
 ) {
-    FlatQuotesList(
-        quotes = quotes,
-        onQuoteClick = onQuoteClick,
-        emptyMessage = "Для этой книги еще нет цитат."
-    )
+    if (quotes.isEmpty()) {
+        EmptyTabMessage("Цитаты не найдены.")
+    } else {
+        FlatQuotesList(
+            quotes = quotes,
+            onQuoteClick = onQuoteClick,
+        )
+    }
 }
 
 @Composable
-private fun BookmarksContent(bookmarks: List<BookmarkDomainModel>) {
+private fun BookmarksContent(
+    bookmarks: List<BookmarkDomainModel>,
+    onBookmarkClick: (BookmarkDomainModel) -> Unit
+) {
     if (bookmarks.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-            Text("Для этой книги еще нет закладок.")
-        }
+        EmptyTabMessage("Закладки не найдены.")
         return
     }
     LazyColumn(
@@ -381,17 +865,30 @@ private fun BookmarksContent(bookmarks: List<BookmarkDomainModel>) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(bookmarks.size) { index ->
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onBookmarkClick(bookmarks[index]) }
+            ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Bookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Закладка на странице ${ bookmarks[index].position + 1}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Column {
+                        Text(
+                            text = "Закладка на странице ${ bookmarks[index].position + 1}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (!bookmarks[index].note.isNullOrBlank()) {
+                            Text(
+                                text = bookmarks[index].note!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -487,25 +984,38 @@ fun EditDescriptionDialog(
     onConfirm: (String) -> Unit
 ) {
     var text by remember { mutableStateOf(initialValue) }
+    val maxCharCount = 500
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Редактировать описание") },
         text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                label = { Text("Описание") },
-                placeholder = { Text("Введите описание книги...") },
-                singleLine = false,
-                maxLines = 10
-            )
+            Column {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        if (it.length <= maxCharCount) text = it
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    label = { Text("Описание") },
+                    placeholder = { Text("Введите описание книги...") },
+                    singleLine = false,
+                    maxLines = 10,
+                    supportingText = {
+                        Text(
+                            text = "${text.length} / $maxCharCount",
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.End,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                )
+            }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(text) }) {
+            Button(onClick = { onConfirm(text.trim()) }) {
                 Text("Сохранить")
             }
         },
@@ -515,4 +1025,21 @@ fun EditDescriptionDialog(
             }
         }
     )
+}
+
+
+@Composable
+private fun InfoRow(
+    icon: ImageVector,
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
+        }
+    }
 }

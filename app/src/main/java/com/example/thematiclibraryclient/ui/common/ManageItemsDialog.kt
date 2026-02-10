@@ -42,14 +42,10 @@ fun ManageItemsDialog(
     onDismiss: () -> Unit,
     onSave: (List<String>) -> Unit
 ) {
-    // Локальное состояние списка
     val items = remember { mutableStateListOf(*initialItems.toTypedArray()) }
 
-    // Состояния диалогов
     var showAddDialog by remember { mutableStateOf(false) }
     var editIndex by remember { mutableStateOf(-1) }
-
-    // <-- НОВОЕ СОСТОЯНИЕ: Индекс элемента, который хотим удалить
     var itemToDeleteIndex by remember { mutableStateOf(-1) }
 
     AlertDialog(
@@ -76,7 +72,6 @@ fun ManageItemsDialog(
                         ItemCard(
                             text = item,
                             onEdit = { editIndex = index },
-                            // <-- ИЗМЕНЕНИЕ: Не удаляем сразу, а запоминаем индекс
                             onDelete = { itemToDeleteIndex = index }
                         )
                     }
@@ -133,7 +128,7 @@ fun ManageItemsDialog(
         )
     }
 
-    // <-- НОВЫЙ ДИАЛОГ: Подтверждение удаления
+    // Подтверждение удаления
     if (itemToDeleteIndex != -1) {
         val itemText = items.getOrNull(itemToDeleteIndex) ?: ""
         ConfirmationDialog(

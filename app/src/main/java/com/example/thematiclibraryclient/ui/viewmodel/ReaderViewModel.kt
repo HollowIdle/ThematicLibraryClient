@@ -3,6 +3,8 @@ package com.example.thematiclibraryclient.ui.viewmodel
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.thematiclibraryclient.data.local.source.BookContentCache
+import com.example.thematiclibraryclient.data.local.source.PaginationCache
 import com.example.thematiclibraryclient.domain.common.DocxToPdfConverter
 import com.example.thematiclibraryclient.domain.common.LocalBookParser
 import com.example.thematiclibraryclient.domain.common.TResult
@@ -12,7 +14,6 @@ import com.example.thematiclibraryclient.domain.usecase.bookmarks.DeleteBookmark
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.GetBookmarksUseCase
 import com.example.thematiclibraryclient.domain.usecase.bookmarks.RefreshBookmarksUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.DownloadBookUseCase
-import com.example.thematiclibraryclient.domain.usecase.books.GetBookContentUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.GetBookDetailsUseCase
 import com.example.thematiclibraryclient.domain.usecase.books.UpdateBookProgressUseCase
 import com.example.thematiclibraryclient.domain.usecase.quotes.CreateQuoteUseCase
@@ -33,14 +34,12 @@ data class ReaderUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val bookTitle: String = "",
-
     val fullContent: AnnotatedString? = null,
     val pages: List<AnnotatedString> = emptyList(),
-
     val isPdfMode: Boolean = false,
     val pdfPath: String? = null,
-
     val currentPage: Int = 0,
+    val requestedPage: Int? = null,
     val isInSelectionMode: Boolean = false,
     val bookmarks: List<BookmarkDomainModel> = emptyList(),
 )
@@ -56,7 +55,9 @@ class ReaderViewModel @Inject constructor(
     private val refreshBookmarksUseCase: RefreshBookmarksUseCase,
     private val localBookParser: LocalBookParser,
     private val docxToPdfConverter: DocxToPdfConverter,
-    private val downloadBookUseCase: DownloadBookUseCase
+    private val downloadBookUseCase: DownloadBookUseCase,
+    private val bookContentCache: BookContentCache,
+    val paginationCache: PaginationCache
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReaderUiState())
@@ -65,11 +66,11 @@ class ReaderViewModel @Inject constructor(
     private val _eventFlow = MutableSharedFlow<UiEvent>()
     val eventFlow = _eventFlow.asSharedFlow()
 
-    private var initialGlobalPosition: Int = 0
     private var targetGlobalPosition: Int = -1
+    private var targetPageIndex: Int = -1
     private var isInitialNavigationDone = false
 
-    fun loadBook(bookId: Int, navPosition: Int = -1) {
+    fun loadBook(bookId: Int, navPosition: Int = -1, isPageNavigation: Boolean = false) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
 
@@ -80,8 +81,19 @@ class ReaderViewModel @Inject constructor(
             }
             _uiState.value = _uiState.value.copy(bookTitle = details.title)
 
-            targetGlobalPosition = if (navPosition != -1) navPosition else details.lastPosition
-            initialGlobalPosition = details.lastPosition
+            isInitialNavigationDone = false
+            targetGlobalPosition = -1
+            targetPageIndex = -1
+
+            if (navPosition != -1) {
+                if (isPageNavigation) {
+                    targetPageIndex = navPosition
+                } else {
+                    targetGlobalPosition = navPosition
+                }
+            } else {
+                targetGlobalPosition = details.lastPosition
+            }
 
             launch {
                 getBookmarksUseCase(bookId).collect { bookmarks ->
@@ -89,6 +101,12 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             launch { refreshBookmarksUseCase(bookId) }
+
+            val cachedHtml = bookContentCache.loadContent(bookId)
+            if (cachedHtml != null) {
+                processHtmlContent(cachedHtml)
+                return@launch
+            }
 
             when (val result = downloadBookUseCase(bookId, "book_file")) {
                 is TResult.Success -> {
@@ -98,87 +116,129 @@ class ReaderViewModel @Inject constructor(
                     try {
                         when (extension) {
                             "pdf" -> {
-                                // --- PDF ---
+                                val page = if (targetPageIndex != -1) targetPageIndex
+                                else if (targetGlobalPosition != -1) targetGlobalPosition
+                                else 0
+
                                 _uiState.value = _uiState.value.copy(
                                     isLoading = false,
                                     isPdfMode = true,
                                     pdfPath = originalFile.absolutePath,
-                                    currentPage = initialGlobalPosition
+                                    currentPage = page,
+                                    requestedPage = page
                                 )
                             }
                             "docx" -> {
-                                // --- DOCX -> PDF ---
-                                // Конвертируем и получаем путь к новому PDF файлу
                                 val pdfFile = docxToPdfConverter.convert(originalFile)
+                                val page = if (targetPageIndex != -1) targetPageIndex
+                                else if (targetGlobalPosition != -1) targetGlobalPosition
+                                else 0
 
                                 _uiState.value = _uiState.value.copy(
                                     isLoading = false,
-                                    isPdfMode = true, // Включаем режим PDF!
+                                    isPdfMode = true,
                                     pdfPath = pdfFile.absolutePath,
-                                    currentPage = initialGlobalPosition
+                                    currentPage = page,
+                                    requestedPage = page
                                 )
                             }
                             else -> {
-                                // --- EPUB, FB2, TXT (Текстовый режим) ---
                                 val htmlContent = withContext(Dispatchers.Default) {
                                     localBookParser.parseToHtml(originalFile)
                                 }
-                                val formattedContent = parseHtmlToAnnotatedString(htmlContent)
-
-                                _uiState.value = _uiState.value.copy(
-                                    isLoading = false,
-                                    isPdfMode = false,
-                                    fullContent = formattedContent
-                                )
+                                bookContentCache.saveContent(bookId, htmlContent)
+                                processHtmlContent(htmlContent)
                             }
                         }
                     } catch (e: Exception) {
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
-                            error = "Ошибка обработки файла: ${e.message}"
+                            error = "Ошибка обработки: ${e.message}"
                         )
-                        e.printStackTrace()
                     }
                 }
                 is TResult.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = "Ошибка загрузки")
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = "Ошибка загрузки файла")
                 }
             }
         }
     }
 
+    private suspend fun processHtmlContent(html: String) {
+        val formattedContent = parseHtmlToAnnotatedString(html)
+
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            isPdfMode = false,
+            fullContent = formattedContent
+        )
+    }
+
     fun onPagesUpdated(pages: List<AnnotatedString>) {
         val currentState = _uiState.value
-        if (pages.size == currentState.pages.size) return
+
+        if (pages.size == currentState.pages.size && pages.isNotEmpty()) return
 
         var newCurrentPage = currentState.currentPage
 
-        if (targetGlobalPosition >= 0 && !isInitialNavigationDone && pages.isNotEmpty()) {
-            var currentTotalLength = 0
-            var foundPage = -1
-            for ((index, page) in pages.withIndex()) {
-                val pageEnd = currentTotalLength + page.length
-                if (targetGlobalPosition < pageEnd) {
-                    foundPage = index
-                    break
+        if (!isInitialNavigationDone && pages.isNotEmpty()) {
+
+            if (targetPageIndex != -1) {
+                if (pages.size > targetPageIndex) {
+                    newCurrentPage = targetPageIndex
+                    isInitialNavigationDone = true
+                    targetPageIndex = -1
                 }
-                currentTotalLength += page.length
-            }
-            if (foundPage != -1) {
-                newCurrentPage = foundPage
-                isInitialNavigationDone = true
+            } else if (targetGlobalPosition >= 0) {
+                var currentTotalLength = 0
+                var foundPage = -1
+
+                for ((index, page) in pages.withIndex()) {
+                    val pageEnd = currentTotalLength + page.length
+                    if (targetGlobalPosition < pageEnd) {
+                        foundPage = index
+                        break
+                    }
+                    currentTotalLength += page.length
+                }
+
+                if (foundPage != -1) {
+                    newCurrentPage = foundPage
+                    isInitialNavigationDone = true
+                    targetGlobalPosition = -1
+                } else {
+                    val totalTextLength = pages.sumOf { it.length }
+                    val fullLength = currentState.fullContent?.length ?: 0
+                    if (fullLength > 0 && totalTextLength >= fullLength) {
+                        newCurrentPage = pages.lastIndex
+                        isInitialNavigationDone = true
+                        targetGlobalPosition = -1
+                    }
+                }
             }
         }
 
         _uiState.value = currentState.copy(
             pages = pages,
-            currentPage = newCurrentPage,
-            isLoading = false
+            currentPage = newCurrentPage
         )
     }
 
     fun onPageChanged(page: Int) {
-        _uiState.value = _uiState.value.copy(currentPage = page)
+        if (_uiState.value.currentPage != page) {
+            _uiState.value = _uiState.value.copy(currentPage = page)
+        }
+        if (_uiState.value.requestedPage != null &&
+            (_uiState.value.requestedPage == page || _uiState.value.requestedPage == page + 1 || _uiState.value.requestedPage == page - 1)) {
+            _uiState.value = _uiState.value.copy(requestedPage = null)
+        }
+    }
+
+    fun jumpToPage(page: Int) {
+        _uiState.value = _uiState.value.copy(
+            currentPage = page,
+            requestedPage = page
+        )
     }
 
     fun saveProgress(bookId: Int) {
@@ -199,7 +259,6 @@ class ReaderViewModel @Inject constructor(
 
     fun createQuote(bookId: Int, text: String, start: Int = 0, end: Int = 0, note: String?) {
         val currentState = _uiState.value
-
         var finalStart = start
         var finalEnd = end
 
@@ -220,7 +279,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun toggleBookmark(bookId: Int) {
+    /*fun toggleBookmark(bookId: Int) {
         val currentState = _uiState.value
         val currentPage = currentState.currentPage
         val existingBookmark = currentState.bookmarks.find { it.position == currentPage }
@@ -230,22 +289,22 @@ class ReaderViewModel @Inject constructor(
         } else {
             createBookmark(bookId, currentPage)
         }
-    }
+    }*/
 
-    private fun createBookmark(bookId: Int, pageIndex: Int) {
+    fun createBookmark(bookId: Int, pageIndex: Int, note: String?) {
         viewModelScope.launch {
-            when (createBookmarkUseCase(bookId, pageIndex, null)) {
+            when (createBookmarkUseCase(bookId, pageIndex, note)) {
                 is TResult.Success -> _eventFlow.emit(UiEvent.ShowSnackbar("Закладка добавлена"))
                 is TResult.Error -> _eventFlow.emit(UiEvent.ShowSnackbar("Ошибка"))
             }
         }
     }
 
-    private fun deleteBookmark(bookmark: BookmarkDomainModel) {
+    fun deleteBookmark(bookmarkId: Int) {
         viewModelScope.launch {
-            when (deleteBookmarkUseCase(bookmark.id)) {
+            when (deleteBookmarkUseCase(bookmarkId)) {
                 is TResult.Success -> {
-                    val updated = _uiState.value.bookmarks.filterNot { it.id == bookmark.id }
+                    val updated = _uiState.value.bookmarks.filterNot { it.id == bookmarkId }
                     _uiState.value = _uiState.value.copy(bookmarks = updated)
                     _eventFlow.emit(UiEvent.ShowSnackbar("Закладка удалена"))
                 }
@@ -254,9 +313,11 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+
     fun toggleSelectionMode() {
         _uiState.value = _uiState.value.copy(isInSelectionMode = !_uiState.value.isInSelectionMode)
     }
+
 
     sealed class UiEvent {
         data class ShowSnackbar(val message: String) : UiEvent()

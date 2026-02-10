@@ -6,6 +6,7 @@ import com.example.thematiclibraryclient.data.local.entity.BookEntity
 import com.example.thematiclibraryclient.data.local.entity.ShelfEntity
 import com.example.thematiclibraryclient.data.local.entity.toDomainModel
 import com.example.thematiclibraryclient.data.mapper.toConnectionExceptionDomainModel
+import com.example.thematiclibraryclient.data.remote.api.IBooksApi
 import com.example.thematiclibraryclient.data.remote.api.IShelvesApi
 import com.example.thematiclibraryclient.data.remote.model.books.toEntity
 import com.example.thematiclibraryclient.data.remote.model.shelves.ShelfRequestApiModel
@@ -20,6 +21,7 @@ import javax.inject.Inject
 
 class ShelvesRemoteRepositoryImpl @Inject constructor(
     private val shelvesApi: IShelvesApi,
+    private val booksApi: IBooksApi,
     private val shelvesDao: ShelvesDao,
     private val booksDao: BooksDao
 ) : IShelvesRemoteRepository {
@@ -68,6 +70,7 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
             val apiBooks = shelvesApi.getBooksOnShelf(localShelf.serverId)
             val apiBookServerIds = apiBooks.map { it.id }.toSet()
 
+            val booksToInsert = mutableListOf<BookEntity>()
             val booksToUpdate = mutableListOf<BookEntity>()
 
             for (apiBook in apiBooks) {
@@ -76,7 +79,11 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
                 if (existingBook != null) {
                     if (!existingBook.shelfIds.contains(shelfId)) {
                         val newShelfIds = existingBook.shelfIds + shelfId
-                        booksToUpdate.add(existingBook.copy(shelfIds = newShelfIds))
+                        booksToUpdate.add(existingBook.copy(shelfIds = newShelfIds, isSynced = true))
+                    } else {
+                        if (!existingBook.isSynced) {
+                            booksToUpdate.add(existingBook.copy(isSynced = true))
+                        }
                     }
                 } else {
                     val newBook = apiBook.toEntity().copy(
@@ -84,7 +91,7 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
                         shelfIds = listOf(shelfId),
                         isSynced = true
                     )
-                    booksToUpdate.add(newBook)
+                    booksToInsert.add(newBook)
                 }
             }
 
@@ -93,12 +100,16 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
             for (localBook in localBooksOnShelf) {
                 if (localBook.serverId != null && !apiBookServerIds.contains(localBook.serverId)) {
                     val newShelfIds = localBook.shelfIds - shelfId
-                    booksToUpdate.add(localBook.copy(shelfIds = newShelfIds))
+                    booksToUpdate.add(localBook.copy(shelfIds = newShelfIds, isSynced = true))
                 }
             }
 
-            if (booksToUpdate.isNotEmpty()) {
-                booksDao.insertBooks(booksToUpdate)
+            if (booksToInsert.isNotEmpty()) {
+                booksDao.insertBooks(booksToInsert)
+            }
+
+            booksToUpdate.forEach {
+                booksDao.updateBook(it)
             }
 
             TResult.Success(Unit)
@@ -172,6 +183,10 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
         if (book?.serverId != null && shelf?.serverId != null) {
             try {
                 shelvesApi.addBookToShelf(shelf.serverId, book.serverId)
+                val updatedBook = booksDao.getBookEntityById(bookId)
+                if (updatedBook != null) {
+                    booksDao.updateBook(updatedBook.copy(isSynced = true))
+                }
             } catch (e: Exception) {
             }
         }
@@ -187,6 +202,10 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
         if (book?.serverId != null && shelf?.serverId != null) {
             try {
                 shelvesApi.removeBookFromShelf(shelf.serverId, book.serverId)
+                val updatedBook = booksDao.getBookEntityById(bookId)
+                if (updatedBook != null) {
+                    booksDao.updateBook(updatedBook.copy(isSynced = true))
+                }
             } catch (e: Exception) {
             }
         }
@@ -198,7 +217,85 @@ class ShelvesRemoteRepositoryImpl @Inject constructor(
         if (bookEntity != null) {
             val newShelfIds = transform(bookEntity.shelfIds).distinct()
             val updatedBook = bookEntity.copy(shelfIds = newShelfIds, isSynced = false)
-            booksDao.insertBook(updatedBook)
+
+            booksDao.updateBook(updatedBook)
         }
     }
+
+    override suspend fun syncPendingChanges(): TResult<Unit, Exception> {
+        // Используем переменную для отслеживания глобального успеха,
+        // но не прерываем выполнение из-за одной ошибки
+        var hasError = false
+
+        try {
+            // 1. Удаление полок
+            val deletedShelves = shelvesDao.getDeletedShelves()
+            deletedShelves.forEach { shelf ->
+                if (shelf.serverId != null) {
+                    try { shelvesApi.deleteShelf(shelf.serverId) } catch (e: Exception) { hasError = true }
+                }
+                shelvesDao.deleteShelfPhysically(shelf.id)
+            }
+
+            // 2. Создание/Обновление полок
+            val unsyncedShelves = shelvesDao.getUnsyncedShelves()
+            for (shelf in unsyncedShelves) {
+                try {
+                    if (shelf.serverId == null) {
+                        val response = shelvesApi.createShelf(ShelfRequestApiModel(shelf.name))
+                        shelvesDao.insertShelf(shelf.copy(serverId = response.id, isSynced = true))
+                    } else {
+                        shelvesApi.updateShelf(shelf.serverId, ShelfRequestApiModel(shelf.name))
+                        shelvesDao.insertShelf(shelf.copy(isSynced = true))
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SYNC_LOG", "Ошибка полки ${shelf.name}", e)
+                    hasError = true
+                }
+            }
+
+            // 3. Синхронизация связей Книга-Полка (САМОЕ ВАЖНОЕ ИСПРАВЛЕНИЕ)
+            val unsyncedBooks = booksDao.getUnsyncedBooks()
+
+            for (localBook in unsyncedBooks) {
+                // Пропускаем, если книга еще не загружена на сервер
+                if (localBook.serverId == null || localBook.serverId == 0) continue
+
+                try {
+                    // Получаем текущее состояние полок книги на сервере
+                    val serverBookDetails = booksApi.getBookDetails(localBook.serverId)
+                    val serverShelfIds = serverBookDetails.shelfIds.toSet()
+
+                    // Вычисляем, какие полки есть локально
+                    val localShelfServerIds = localBook.shelfIds.mapNotNull { localShelfId ->
+                        shelvesDao.getShelfEntityById(localShelfId)?.serverId
+                    }.toSet()
+
+                    val toAdd = localShelfServerIds - serverShelfIds
+                    val toRemove = serverShelfIds - localShelfServerIds
+
+                    toAdd.forEach { shelfServerId ->
+                        shelvesApi.addBookToShelf(shelfServerId, localBook.serverId)
+                    }
+                    toRemove.forEach { shelfServerId ->
+                        shelvesApi.removeBookFromShelf(shelfServerId, localBook.serverId)
+                    }
+
+                    android.util.Log.d("SYNC_LOG", "Полки книги ${localBook.title} синхронизированы. isSynced=true")
+
+                    booksDao.updateBook(localBook.copy(isSynced = true))
+
+                } catch (e: Exception) {
+                    android.util.Log.e("SYNC_LOG", "Ошибка связей книги ${localBook.title}", e)
+                    hasError = true
+                }
+            }
+
+            return if (hasError) TResult.Error(Exception("Completed with errors")) else TResult.Success(Unit)
+
+        } catch (e: Exception) {
+            return TResult.Error(e)
+        }
+    }
+
 }

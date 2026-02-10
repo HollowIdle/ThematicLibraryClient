@@ -44,6 +44,5 @@ fun BookListItemApiModel.toEntity() = BookEntity(
     shelfIds = this.shelfIds,
     lastPosition = 0,
     isDetailsLoaded = false,
-    filePath = null,
     isSynced = true
 )

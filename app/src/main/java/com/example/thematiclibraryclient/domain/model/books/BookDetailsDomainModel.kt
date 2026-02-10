@@ -7,5 +7,6 @@ data class BookDetailsDomainModel(
     val authors: List<String>,
     val tags: List<String>,
     val shelfIds: List<Int>,
-    val lastPosition: Int
+    val lastPosition: Int,
+    val fileExtension: String? = null
 )

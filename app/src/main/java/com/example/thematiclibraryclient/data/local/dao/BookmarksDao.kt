@@ -13,6 +13,12 @@ interface BookmarksDao {
     @Query("SELECT * FROM bookmarks WHERE bookId = :bookId AND isDeleted = 0 ORDER BY position ASC")
     fun getBookmarksForBook(bookId: Int): Flow<List<BookmarkEntity>>
 
+    @Query("SELECT * FROM bookmarks WHERE id = :bookmarkId")
+    suspend fun getBookmarkEntityById(bookmarkId: Int): BookmarkEntity?
+
+    @Query("SELECT * FROM bookmarks WHERE isDeleted = 1")
+    suspend fun getDeletedBookmarks(): List<BookmarkEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBookmark(bookmark: BookmarkEntity): Long
 
@@ -30,4 +36,7 @@ interface BookmarksDao {
 
     @Query("SELECT * FROM bookmarks WHERE isSynced = 0")
     suspend fun getUnsyncedBookmarks(): List<BookmarkEntity>
+
+    @Query("DELETE FROM bookmarks")
+    suspend fun deleteAllBookmarks()
 }

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -28,6 +29,10 @@ class TokenLocalDataSourceImpl @Inject constructor(
         return context.dataStore.data.map {
             preferences -> preferences[TOKEN_KEY]
         }
+    }
+
+    override suspend fun getTokenSync(): String? {
+        return context.dataStore.data.first()[TOKEN_KEY]
     }
 
     override suspend fun saveToken(token: String) {

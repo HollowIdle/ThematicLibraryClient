@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import com.example.thematiclibraryclient.domain.model.books.AuthorDomainModel
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.util.Date
 
 class AppTypeConverters {
     private val gson = Gson()
@@ -39,5 +40,15 @@ class AppTypeConverters {
     fun toAuthorList(value: String): List<AuthorDomainModel> {
         val listType = object : TypeToken<List<AuthorDomainModel>>() {}.type
         return gson.fromJson(value, listType) ?: emptyList()
+    }
+
+    @TypeConverter
+    fun fromDate(value: Date?): Long? {
+        return value?.time
+    }
+
+    @TypeConverter
+    fun toDate(value: Long?): Date? {
+        return value?.let { Date(it) }
     }
 }

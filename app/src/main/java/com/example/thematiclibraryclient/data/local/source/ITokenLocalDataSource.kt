@@ -6,6 +6,8 @@ interface ITokenLocalDataSource {
 
     fun getToken() : Flow<String?>
 
+    suspend fun getTokenSync(): String?
+
     suspend fun saveToken(token: String)
 
     suspend fun clearToken()

@@ -4,8 +4,6 @@ import com.example.thematiclibraryclient.data.local.dao.UserDao
 import com.example.thematiclibraryclient.data.local.entity.toDomainModel
 import com.example.thematiclibraryclient.data.mapper.toConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.data.remote.api.IUserApi
-import com.example.thematiclibraryclient.data.remote.model.users.toDomainModel
-import com.example.thematiclibraryclient.data.remote.model.users.toEntity
 import com.example.thematiclibraryclient.domain.common.TResult
 import com.example.thematiclibraryclient.domain.model.common.ConnectionExceptionDomainModel
 import com.example.thematiclibraryclient.domain.model.user.UserDomainModel

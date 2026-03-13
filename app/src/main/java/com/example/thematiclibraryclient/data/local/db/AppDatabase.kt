@@ -26,7 +26,7 @@ import com.example.thematiclibraryclient.data.local.entity.UserEntity
         BookmarkEntity::class,
         UserEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(AppTypeConverters::class)

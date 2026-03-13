@@ -26,8 +26,6 @@ class AuthInterceptor @Inject constructor(
             tokenLocalDataSource.getToken().firstOrNull()
         }
 
-        Log.d("AuthInterceptor", "Request to ${originalRequest.url.encodedPath}. Token used: '$token'")
-
         if (token.isNullOrEmpty()) {
             return chain.proceed(originalRequest)
         }

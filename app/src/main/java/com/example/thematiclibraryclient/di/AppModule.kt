@@ -36,6 +36,7 @@ import com.example.thematiclibraryclient.domain.repository.IQuotesRemoteReposito
 import com.example.thematiclibraryclient.domain.repository.IShelvesRemoteRepository
 import com.example.thematiclibraryclient.domain.repository.ITokenRepository
 import com.example.thematiclibraryclient.domain.repository.IUserRemoteRepository
+import com.example.thematiclibraryclient.domain.util.JwtDecoder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -214,6 +215,12 @@ object AppModule {
     @Singleton
     fun provideNetworkConnectivityObserver(@ApplicationContext context: Context): NetworkConnectivityObserver {
         return NetworkConnectivityObserver(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideJwtDecoder(): JwtDecoder {
+        return JwtDecoder()
     }
 
 }

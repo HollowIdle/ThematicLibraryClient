@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -18,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -72,6 +74,8 @@ fun ProfileScreen(
                 ProfileContent(
                     username = uiState.user!!.username,
                     email = uiState.user!!.email,
+                    diskQuota = uiState.user!!.diskQuota,
+                    storageUsed = uiState.user!!.storageUsed,
                     onLogoutClick = { showLogoutDialog = true },
                     onSyncClick = { viewModel.syncAll() },
                     isOffline = uiState.isOffline
@@ -148,10 +152,16 @@ private fun SyncProgressDialog() {
 private fun ProfileContent(
     username: String,
     email: String,
+    diskQuota: Long,
+    storageUsed: Long,
     onLogoutClick: () -> Unit,
     onSyncClick: () -> Unit,
     isOffline: Boolean
 ) {
+    val quotaInMb = diskQuota / 1048576
+    val usedInMb = storageUsed
+    val progress = if (quotaInMb > 0) (usedInMb.toFloat() / quotaInMb).coerceIn(0f, 1f) else 0f
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -169,6 +179,25 @@ private fun ProfileContent(
         Text(
             text = "Email: $email",
             style = MaterialTheme.typography.bodyLarge
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = "Использовано: $usedInMb / $quotaInMb МБ",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp),
+            color = if (progress > 0.9f) MaterialTheme.colorScheme.error 
+                    else MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
 
         Spacer(modifier = Modifier.height(32.dp))

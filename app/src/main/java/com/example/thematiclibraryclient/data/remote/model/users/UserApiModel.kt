@@ -4,7 +4,6 @@ import com.example.thematiclibraryclient.data.local.entity.UserEntity
 import com.example.thematiclibraryclient.domain.model.user.UserDomainModel
 import com.google.gson.annotations.SerializedName
 import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 data class UserApiModel(
@@ -16,6 +15,8 @@ data class UserApiModel(
     val isBlocked: Boolean = false,
     @SerializedName("storageQuota")
     val storageQuota: Long = 500,
+    @SerializedName("storageUsed")
+    val storageUsed: Long = 0,
     @SerializedName("lastSessionReset")
     val lastSessionReset: String? = null
 ) {
@@ -38,6 +39,7 @@ data class UserApiModel(
             email = email,
             isBlocked = isBlocked,
             diskQuota = storageQuota * MB_TO_BYTES,
+            storageUsed = storageUsed,
             lastSessionReset = parsedDate
         )
     }
@@ -58,6 +60,7 @@ data class UserApiModel(
             email = this.email,
             isBlocked = this.isBlocked,
             diskQuota = this.storageQuota * MB_TO_BYTES,
+            storageUsed = this.storageUsed,
             lastSessionReset = parsedDate
         )
     }
